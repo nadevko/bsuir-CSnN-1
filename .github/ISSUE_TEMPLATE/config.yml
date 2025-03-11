@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Progress tracking
+    url: https://github.com/users/nadevko/projects/2
+    about: Use that project to track your solution progress.
+  - name: Template repository
+    url: https://github.com/nadevko/bsuir-template-1
+    about: Please report about any problems with template or project here.

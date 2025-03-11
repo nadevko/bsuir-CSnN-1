@@ -1,0 +1,26 @@
+name: Report
+description: For tasks that requires only to write report or for too large reports.
+title: "[report] <title>"
+labels:
+  - Lab Work
+  - Practical Work
+  - Graduation Thesis
+  - Term Project
+  - Report
+projects: ["nadevko/2"]
+body:
+  - type: input
+    attributes:
+      label: Assignment number
+      description: The number of the work performed.
+      placeholder: 1, 2, 3...
+  - type: input
+    attributes:
+      label: Variant
+      description: Assignment variant to carry out.
+      placeholder: Integer, description or "-" (if there are no splitting)
+  - type: textarea
+    attributes:
+      label: Task
+      description: Describe what should be done.
+      placeholder: Descriptions...

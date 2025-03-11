@@ -1,0 +1,24 @@
+name: Term or thesis work
+description: Plan graduation thesis or term project to do.
+title: Term <N> project/Graduation thesis
+labels:
+  - Graduation Thesis
+  - Term Project
+  - Report
+projects: ["nadevko/2"]
+body:
+  - type: input
+    attributes:
+      label: Code
+      description: Code that are used to indicate that work in the university archive.
+      placeholder: XX X-XX XX XX XXX
+  - type: input
+    attributes:
+      label: Variant
+      description: Assignment variant to carry out
+      placeholder: full work name
+  - type: textarea
+    attributes:
+      label: Theory
+      description: Links to the theory goes here.
+      placeholder: List of the resources

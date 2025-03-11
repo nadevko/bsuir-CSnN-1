@@ -1,0 +1,19 @@
+name: Repository setup checks
+description: To be created once on repository init.
+title: Repository setup
+labels:
+  - Infrastructure
+  - Publication
+  - Theory
+body:
+  - type: checkboxes
+    attributes:
+      label: Tasks
+      description: |
+        Tasks that are required to setup the repository. Check if something already done.
+      options:
+        - label: Upload or link all theoretical materials.
+        - label: Create issues for every work to do.
+        - label: Configure tools to run and distribute code.
+        - label: Configure nix environment, if it used by you.
+        - label: Update README.

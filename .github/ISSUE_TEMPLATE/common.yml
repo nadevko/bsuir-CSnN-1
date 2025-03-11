@@ -1,0 +1,41 @@
+name: Laboratory or practical work
+description: Plan new laboratory or practical work to do.
+title: "[<lab/practice>] <title>"
+labels:
+  - Lab Work
+  - Practical Work
+  - Report
+projects: ["nadevko/2"]
+body:
+  - type: input
+    attributes:
+      label: Assignment number
+      description: The number of the work performed.
+      placeholder: 1, 2, 3...
+  - type: input
+    attributes:
+      label: Variant
+      description: Assignment variant to carry out.
+      placeholder: Integer, description or "-" (if there are no splitting)
+  - type: textarea
+    attributes:
+      label: Theory
+      description: Links to the theory goes here.
+      placeholder: List of the resources
+  - type: textarea
+    attributes:
+      label: Requirements
+      description: |
+        Technical requirements:
+
+        - languages;
+        - frameworks;
+        - additional data;
+        - links to task description;
+        - is report required?
+      placeholder: List of the requirements
+  - type: textarea
+    attributes:
+      label: Task
+      description: Describe what should be done.
+      placeholder: Descriptions...

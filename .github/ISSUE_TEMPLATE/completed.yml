@@ -1,0 +1,47 @@
+name: Refactoring of the completed works
+description: Use it for post-factum completed task editing.
+title: "[<lab/practice>] <title>"
+labels:
+  - Lab Work
+  - Practical Work
+  - Graduation Thesis
+  - Term Project
+  - Report
+  - Infrastructure
+  - Publication
+  - Theory
+body:
+  - type: dropdown
+    attributes:
+      label: Cause
+      description: Why refactoring are required.
+      options:
+        - Import repo
+        - Reorganise building chain
+        - Update nix environment
+        - Keep code up-to-date
+        - Migrate unorganised code into this monorepo
+        - Separate project from this repo for further development
+        - Conscience demands to rework bad results
+  - type: textarea
+    attributes:
+      label: Targets
+      description: Place here all tasks that touched by this problem
+      placeholder: List of the issue links
+  - type: textarea
+    attributes:
+      label: Requirements
+      description: |
+        Technical requirements:
+
+        - languages;
+        - frameworks;
+        - additional data;
+        - links to task description;
+        - is report required?
+      placeholder: List of the requirements
+  - type: textarea
+    attributes:
+      label: Task
+      description: Describe what should be done.
+      placeholder: Descriptions...
