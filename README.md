@@ -11,9 +11,9 @@
 
 ## Tasks
 
-- [](lw/01/README.md)
-- [](lw/02/README.md)
-- [](lw/03/README.md)
-- [](lw/04/README.md)
-- [](lw/05/README.md)
-- [](tp/README.md)
+- [Introduction to the OSI model](lw/01/README.md)
+- [Traceroute](lw/02/README.md)
+- [Chat](lw/03/README.md)
+- [Proxy server](lw/04/README.md)
+- [File storage](lw/05/README.md)
+- [Coursework](tp/README.md)
