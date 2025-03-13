@@ -5,8 +5,14 @@
     ];
   },
   mkShell ? pkgs.mkShell,
+  writeText ? pkgs.writeText,
+  clang-tools ? pkgs.clang-tools,
 }:
-mkShell {
+mkShell rec {
+  vscode-settings = writeText "settings.json" (
+    builtins.toJSON { "clangd.path" = "${clang-tools}/bin/clangd"; }
+  );
+
   packages = with pkgs; [
     (texliveFull.withPackages (
       ps: with ps; [
@@ -19,5 +25,13 @@ mkShell {
     tex-fmt
     inkscape-with-extensions
     python312Packages.pygments
+    clang-tools
+    cmake-format
+    cmake
   ];
+
+  shellHook = ''
+    mkdir .vscode &>/dev/null
+    cp ${vscode-settings} .vscode/settings.json
+  '';
 }

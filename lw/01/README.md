@@ -1,8 +1,7 @@
-# [Lab work N name]
+# Введение в модель OSI
 
-- Variant: N
-- Report: [report.pdf](https://github.com/user/repo/releases/download/term-N/lw-{lab-N}.pdf)
-- Issues: [N](https://github.com/user/repo/issues/N), ...
+- Variant: -
+- Issues: [2](https://github.com/nadevko/bsuir-CSnN-1/issues/2)
 
 ## Usage
 
