@@ -1,14 +1,8 @@
 module internal Traceroute.Arguments
 
+open Traceroute.Tracert
 open Argu
 open System.Net
-
-type Protocols =
-    | ICMP
-    | TCP
-    | UDP
-    | UDDP
-    | UDPLITE
 
 type IpVersions =
     | V4
@@ -46,19 +40,6 @@ type CliArguments =
             | Sendwait _ -> "Minimal time interval between probes"
             | Packet_Length _ -> "Set the packet length for outgoing packets"
             | Host _ -> "The host to trace the route to"
-
-type Config =
-    { device: string
-      protocol: Protocols
-      tos: uint
-      port: uint
-      first_ttl: uint
-      max_ttl: uint
-      squeries: uint
-      nqueries: uint
-      msec: float
-      length: uint
-      host: IPHostEntry }
 
 let configure argv =
     let results =

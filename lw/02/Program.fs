@@ -3,7 +3,7 @@
 let argv = System.Environment.GetCommandLineArgs() |> Array.skip 1
 
 try
-    Arguments.configure argv |> printfn "Got parse results %A"
+    Arguments.configure argv |> Tracert.run
 with ex ->
 #if DEBUG
     raise ex
