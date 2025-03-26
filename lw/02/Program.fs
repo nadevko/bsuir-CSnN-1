@@ -1,2 +1,6 @@
-﻿// For more information see https://aka.ms/fsharp-console-apps
-printfn "Hello from F#"
+﻿module Traceroute.Program
+
+[<EntryPoint>]
+let main argv =
+    Arguments.configure argv |> printfn "Got parse results %A"
+    0
