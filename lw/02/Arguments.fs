@@ -50,8 +50,8 @@ type CliArguments =
 type Config =
     { device: string
       protocol: Protocols
-      tos: uint option
-      port: uint option
+      tos: uint
+      port: uint
       first_ttl: uint
       max_ttl: uint
       squeries: uint
@@ -116,10 +116,23 @@ let configure argv =
         with :? Sockets.SocketException as ex ->
             failwithf "Failed to resolve host: %s" ex.Message
 
+    let protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
+
+    let port =
+        results.TryGetResult Port
+        |> Option.defaultValue (
+            match protocol with
+            | ICMP -> 33434u
+            | TCP -> 80u
+            | UDP -> 53u
+            | UDDP -> 33434u
+            | UDPLITE -> 53u
+        )
+
     { device = device
-      tos = results.TryGetResult Tos
-      protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
-      port = results.TryGetResult Port
+      tos = results.TryGetResult Tos |> Option.defaultValue 0u
+      protocol = protocol
+      port = port
       first_ttl = results.TryGetResult First |> Option.defaultValue 1u
       max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
       squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u
