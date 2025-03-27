@@ -1,19 +1,19 @@
 module internal Traceroute.Arguments
 
-open Traceroute.Tracert
+open Config
 open Argu
 open System.Net
 
 type IpVersions =
-    | V4
-    | V6
+    | IPv4
+    | IPv6
     | Auto
 
 [<CliPrefix(CliPrefix.DoubleDash)>]
 [<NoAppSettings>]
 type CliArguments =
     | [<AltCommandLine "-i">] Interface of device: string
-    | [<AltCommandLine "-v">] IP_Version of version: IpVersions
+    | [<AltCommandLine "-v">] IP_Version of version: uint
     | [<AltCommandLine "-t">] Tos of tos: uint
     | [<AltCommandLine "-P">] Protocol of protocol: Protocols
     | [<AltCommandLine "-p">] Port of port: uint
@@ -29,7 +29,7 @@ type CliArguments =
         member this.Usage =
             match this with
             | Interface _ -> "Specify a network interface to operate with"
-            | IP_Version _ -> "Specify preferred IP version to resolve hostnames: v4, v6, auto"
+            | IP_Version _ -> "Specify preferred IP version: 4 or 6 (default or any other value means auto)"
             | Tos _ -> "Set the TOS (IPv4 type of service) or TC (IPv6 traffic class) value for outgoing packets"
             | Protocol _ -> "Set the protocol to be used for traceroute operations: icmp, tcp, udp, uddp, udplite"
             | Port _ -> "Set the destination port to use"
@@ -63,17 +63,13 @@ let configure argv =
             .ParseCommandLine
             argv
 
-    let device =
-        results.TryGetResult Interface
-        |> Option.defaultValue
-            (NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-             |> Array.filter (fun x -> x.NetworkInterfaceType <> NetworkInformation.NetworkInterfaceType.Loopback)
-             |> Array.head)
-                .Name
+    let ipVersion =
+        match results.TryGetResult IP_Version with
+        | Some 4u -> IPv4
+        | Some 6u -> IPv6
+        | _ -> Auto
 
-    let ipVersion = results.TryGetResult IP_Version |> Option.defaultValue Auto
-
-    let host =
+    let ip =
         try
             let hostName = results.GetResult Host
 
@@ -85,15 +81,14 @@ let configure argv =
                 let addresses' =
                     match ipVersion with
                     | Auto -> addresses
-                    | V4 ->
+                    | IPv4 ->
                         addresses
                         |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetwork)
-                    | V6 ->
+                    | IPv6 ->
                         addresses
                         |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetworkV6)
 
                 addresses'[0]
-            |> Dns.GetHostEntry
         with :? Sockets.SocketException as ex ->
             failwithf "Failed to resolve host: %s" ex.Message
 
@@ -110,14 +105,34 @@ let configure argv =
             | UDPLITE -> 53u
         )
 
-    { device = device
-      tos = results.TryGetResult Tos |> Option.defaultValue 0u
-      protocol = protocol
-      port = port
+    let device: IPAddress option =
+        match results.TryGetResult Interface with
+        | None -> None
+        | Some device ->
+            try
+                NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                |> Array.find (fun x -> device = x.Id)
+                |> fun x -> x.GetIPProperties().UnicastAddresses
+                |> Seq.map (fun x -> x.Address)
+                |> Seq.find (fun x ->
+                    match ipVersion, x.AddressFamily with
+                    | Auto, (Sockets.AddressFamily.InterNetwork | Sockets.AddressFamily.InterNetworkV6) -> true
+                    | IPv4, Sockets.AddressFamily.InterNetwork -> true
+                    | IPv6, Sockets.AddressFamily.InterNetworkV6 -> true
+                    | _, _ -> false)
+                |> Some
+            with :? System.Collections.Generic.KeyNotFoundException as ex ->
+                failwith $"Device with ID '{device}' not found."
+
+    { protocol = protocol
+      port = int port
+      ip = ip
+      host = (Dns.GetHostEntry ip).HostName
+      device = device
       first_ttl = results.TryGetResult First |> Option.defaultValue 1u
-      max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
-      squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u
-      nqueries = results.TryGetResult Queries |> Option.defaultValue 3u
-      msec = results.TryGetResult Sendwait |> Option.defaultValue 0.0
       length = results.TryGetResult Packet_Length |> Option.defaultValue 40u
-      host = host }
+      max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
+      msec = results.TryGetResult Sendwait |> Option.defaultValue 0.0
+      nqueries = results.TryGetResult Queries |> Option.defaultValue 3u
+      squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u
+      tos = results.TryGetResult Tos |> Option.defaultValue 0u }

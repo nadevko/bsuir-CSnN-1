@@ -1,7 +1,5 @@
 module Traceroute.Config
 
-open System.Net
-
 type Protocols =
     | ICMP
     | TCP
@@ -10,14 +8,15 @@ type Protocols =
     | UDPLITE
 
 type Config =
-    { device: string
+    { device: System.Net.IPAddress option
       protocol: Protocols
       tos: uint
-      port: uint
+      port: int
       first_ttl: uint
       max_ttl: uint
       squeries: uint
       nqueries: uint
       msec: float
       length: uint
-      host: IPHostEntry }
+      ip: System.Net.IPAddress
+      host: string }

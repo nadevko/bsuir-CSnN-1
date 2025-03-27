@@ -4,7 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Tracert.fs" />
+    <Compile Include="Config.fs" />
+    <Compile Include="ICMP.fs" />
     <Compile Include="Arguments.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
