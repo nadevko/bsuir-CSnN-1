@@ -1,5 +1,7 @@
 module Traceroute.Config
 
+open System.Net
+
 type Protocols =
     | ICMP
     | TCP
@@ -9,13 +11,15 @@ type Protocols =
 
 type Config =
     { protocol: Protocols
-      localEP: System.Net.IPEndPoint option
-      remoteEP: System.Net.IPEndPoint
-      msec: float
+      localEP: IPEndPoint
+      remoteEP: IPEndPoint
+      maxwait: float
+      herewait: float
+      nearwait: float
+      sendwait: float
       bytes: uint
       tos: uint8
       first_ttl: uint
       max_ttl: uint
       squeries: uint
-      nqueries: uint
-      }
+      nqueries: uint }

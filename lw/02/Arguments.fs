@@ -4,11 +4,6 @@ open Config
 open Argu
 open System.Net
 
-type IpVersions =
-    | IPv4
-    | IPv6
-    | Auto
-
 [<CliPrefix(CliPrefix.DoubleDash)>]
 [<NoAppSettings>]
 type CliArguments =
@@ -21,6 +16,7 @@ type CliArguments =
     | [<AltCommandLine "-m">] Max of max_ttl: uint
     | [<AltCommandLine "-Q">] Sim_Queries of squeries: uint
     | [<AltCommandLine "-q">] Queries of nqueries: uint
+    | [<AltCommandLine "-w">] Wait of max: float * herewait: float * nearwait: float
     | [<AltCommandLine "-W">] Sendwait of msec: float
     | [<AltCommandLine "-b">] Bytes of length: uint
     | [<MainCommandAttribute; ExactlyOnce>] Host of host: string
@@ -65,11 +61,29 @@ let configure argv =
 
     let ipVersion =
         match results.TryGetResult IP_Version with
-        | Some 4uy -> IPv4
-        | Some 6uy -> IPv6
-        | _ -> Auto
+        | Some 4uy -> Some Sockets.AddressFamily.InterNetwork
+        | Some 6uy -> Some Sockets.AddressFamily.InterNetworkV6
+        | _ -> None
 
-    let ip =
+    let protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
+
+    let localEP =
+        match results.TryGetResult Interface with
+        | None -> IPEndPoint(IPAddress.Any, 0)
+        | Some device ->
+            try
+                NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                |> Array.find (fun x -> device = x.Id)
+                |> fun x -> x.GetIPProperties().UnicastAddresses
+                |> Seq.map (fun x -> x.Address)
+                |> match ipVersion with
+                   | None -> Seq.head
+                   | Some af -> Seq.find (fun x -> af = x.AddressFamily)
+                |> fun x -> IPEndPoint(x, 0)
+            with :? System.Collections.Generic.KeyNotFoundException as ex ->
+                failwith $"Device with ID '{device}' not found."
+
+    let remote =
         try
             let hostName = results.GetResult Host
 
@@ -80,19 +94,17 @@ let configure argv =
 
                 let addresses' =
                     match ipVersion with
-                    | Auto -> addresses
-                    | IPv4 ->
+                    | Some Sockets.AddressFamily.InterNetwork ->
                         addresses
                         |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetwork)
-                    | IPv6 ->
+                    | Some Sockets.AddressFamily.InterNetworkV6 ->
                         addresses
                         |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetworkV6)
+                    | _ -> addresses
 
                 addresses'[0]
         with :? Sockets.SocketException as ex ->
             failwithf "Failed to resolve host: %s" ex.Message
-
-    let protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
 
     let port =
         results.TryGetResult Port
@@ -105,32 +117,18 @@ let configure argv =
             | UDPLITE -> 53us
         )
 
-    let localEP =
-        match results.TryGetResult Interface with
-        | None -> None
-        | Some device ->
-            try
-                NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                |> Array.find (fun x -> device = x.Id)
-                |> fun x -> x.GetIPProperties().UnicastAddresses
-                |> Seq.map (fun x -> x.Address)
-                |> Seq.find (fun x ->
-                    match ipVersion, x.AddressFamily with
-                    | Auto, (Sockets.AddressFamily.InterNetwork | Sockets.AddressFamily.InterNetworkV6) -> true
-                    | IPv4, Sockets.AddressFamily.InterNetwork -> true
-                    | IPv6, Sockets.AddressFamily.InterNetworkV6 -> true
-                    | _, _ -> false)
-                |> fun x -> IPEndPoint(x, int port)
-                |> Some
-            with :? System.Collections.Generic.KeyNotFoundException as ex ->
-                failwith $"Device with ID '{device}' not found."
-
-    let remoteEP = IPEndPoint(ip, int port)
+    let (maxwait, herewait, nearwait) =
+        results.TryGetResult Wait |> Option.defaultValue (3.0, 10.0, 5.0)
 
     { protocol = protocol
       localEP = localEP
-      remoteEP = remoteEP
-      msec = results.TryGetResult Sendwait |> Option.defaultValue 0.0
+      remoteEP = IPEndPoint(remote, int port)
+
+      maxwait = maxwait
+      herewait = herewait
+      nearwait = nearwait
+
+      sendwait = results.TryGetResult Sendwait |> Option.defaultValue 0.0
       bytes = results.TryGetResult Bytes |> Option.defaultValue 40u
       tos = results.TryGetResult Tos |> Option.defaultValue 0uy
       first_ttl = results.TryGetResult First |> Option.defaultValue 1u
