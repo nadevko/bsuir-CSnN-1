@@ -25,10 +25,15 @@ open System.Diagnostics
 let route (config: Config) =
     let ttlFieldSize = config.max_ttl.ToString().Length
 
-    new UdpClient(config.port)
+    let client =
+        match config.localEP with
+        | Some localEP -> new UdpClient(localEP)
+        | None -> new UdpClient()
 
+    client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, int config.tos)
 
-// printf "%A" deviceIp
+    client.Send(Array.create 32 0uy, 32, config.remoteEP).ToString()
+
 
 // for ttl in uint config.first_ttl .. uint config.max_ttl do
 //     printfn "%*d  " ttlFieldSize ttl

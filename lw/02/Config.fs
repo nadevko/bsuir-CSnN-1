@@ -8,15 +8,14 @@ type Protocols =
     | UDPLITE
 
 type Config =
-    { device: System.Net.IPAddress option
-      protocol: Protocols
-      tos: uint
-      port: int
+    { protocol: Protocols
+      localEP: System.Net.IPEndPoint option
+      remoteEP: System.Net.IPEndPoint
+      msec: float
+      bytes: uint
+      tos: uint8
       first_ttl: uint
       max_ttl: uint
       squeries: uint
       nqueries: uint
-      msec: float
-      length: uint
-      ip: System.Net.IPAddress
-      host: string }
+      }

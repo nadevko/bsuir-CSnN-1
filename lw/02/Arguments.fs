@@ -13,16 +13,16 @@ type IpVersions =
 [<NoAppSettings>]
 type CliArguments =
     | [<AltCommandLine "-i">] Interface of device: string
-    | [<AltCommandLine "-v">] IP_Version of version: uint
-    | [<AltCommandLine "-t">] Tos of tos: uint
+    | [<AltCommandLine "-v">] IP_Version of version: uint8
+    | [<AltCommandLine "-t">] Tos of tos: uint8
     | [<AltCommandLine "-P">] Protocol of protocol: Protocols
-    | [<AltCommandLine "-p">] Port of port: uint
+    | [<AltCommandLine "-p">] Port of port: uint16
     | [<AltCommandLine "-f">] First of first_ttl: uint
     | [<AltCommandLine "-m">] Max of max_ttl: uint
     | [<AltCommandLine "-Q">] Sim_Queries of squeries: uint
     | [<AltCommandLine "-q">] Queries of nqueries: uint
     | [<AltCommandLine "-W">] Sendwait of msec: float
-    | [<AltCommandLine "-l">] Packet_Length of length: uint
+    | [<AltCommandLine "-b">] Bytes of length: uint
     | [<MainCommandAttribute; ExactlyOnce>] Host of host: string
 
     interface IArgParserTemplate with
@@ -38,7 +38,7 @@ type CliArguments =
             | Sim_Queries _ -> "Set the number of probes to be tried simultaneously"
             | Queries _ -> "Set the number of probes per each hop"
             | Sendwait _ -> "Minimal time interval between probes"
-            | Packet_Length _ -> "Set the packet length for outgoing packets"
+            | Bytes _ -> "How many bytes should be sent in each probe"
             | Host _ -> "The host to trace the route to"
 
 let configure argv =
@@ -65,8 +65,8 @@ let configure argv =
 
     let ipVersion =
         match results.TryGetResult IP_Version with
-        | Some 4u -> IPv4
-        | Some 6u -> IPv6
+        | Some 4uy -> IPv4
+        | Some 6uy -> IPv6
         | _ -> Auto
 
     let ip =
@@ -98,14 +98,14 @@ let configure argv =
         results.TryGetResult Port
         |> Option.defaultValue (
             match protocol with
-            | ICMP -> 33434u
-            | TCP -> 80u
-            | UDP -> 53u
-            | UDDP -> 33434u
-            | UDPLITE -> 53u
+            | ICMP -> 33434us
+            | TCP -> 80us
+            | UDP -> 53us
+            | UDDP -> 33434us
+            | UDPLITE -> 53us
         )
 
-    let device: IPAddress option =
+    let localEP =
         match results.TryGetResult Interface with
         | None -> None
         | Some device ->
@@ -120,19 +120,20 @@ let configure argv =
                     | IPv4, Sockets.AddressFamily.InterNetwork -> true
                     | IPv6, Sockets.AddressFamily.InterNetworkV6 -> true
                     | _, _ -> false)
+                |> fun x -> IPEndPoint(x, int port)
                 |> Some
             with :? System.Collections.Generic.KeyNotFoundException as ex ->
                 failwith $"Device with ID '{device}' not found."
 
+    let remoteEP = IPEndPoint(ip, int port)
+
     { protocol = protocol
-      port = int port
-      ip = ip
-      host = (Dns.GetHostEntry ip).HostName
-      device = device
-      first_ttl = results.TryGetResult First |> Option.defaultValue 1u
-      length = results.TryGetResult Packet_Length |> Option.defaultValue 40u
-      max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
+      localEP = localEP
+      remoteEP = remoteEP
       msec = results.TryGetResult Sendwait |> Option.defaultValue 0.0
+      bytes = results.TryGetResult Bytes |> Option.defaultValue 40u
+      tos = results.TryGetResult Tos |> Option.defaultValue 0uy
+      first_ttl = results.TryGetResult First |> Option.defaultValue 1u
+      max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
       nqueries = results.TryGetResult Queries |> Option.defaultValue 3u
-      squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u
-      tos = results.TryGetResult Tos |> Option.defaultValue 0u }
+      squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u }
