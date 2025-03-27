@@ -7,7 +7,7 @@ let argv = System.Environment.GetCommandLineArgs() |> Array.skip 1
 let main (argv: string array) =
     let cfg: Config = Arguments.configure argv
     let remoteIP = cfg.remoteEP.Address
-    printf "Traceroute to %s (%s)" (System.Net.Dns.GetHostEntry remoteIP).HostName (remoteIP.ToString())
+    printfn "Traceroute to %s (%s)" (System.Net.Dns.GetHostEntry remoteIP).HostName (remoteIP.ToString())
 
     cfg
     |> match cfg.protocol with

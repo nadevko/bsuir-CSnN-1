@@ -13,13 +13,9 @@ type Config =
     { protocol: Protocols
       localEP: IPEndPoint
       remoteEP: IPEndPoint
-      maxwait: float
-      herewait: float
-      nearwait: float
-      sendwait: float
-      bytes: uint
-      tos: uint8
-      first_ttl: uint
-      max_ttl: uint
-      squeries: uint
-      nqueries: uint }
+      timeout: int
+      bytes: int
+      tos: int
+      first_ttl: int
+      max_ttl: int
+      queries: int }

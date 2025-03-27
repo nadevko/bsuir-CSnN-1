@@ -14,10 +14,8 @@ type CliArguments =
     | [<AltCommandLine "-p">] Port of port: uint16
     | [<AltCommandLine "-f">] First of first_ttl: uint
     | [<AltCommandLine "-m">] Max of max_ttl: uint
-    | [<AltCommandLine "-Q">] Sim_Queries of squeries: uint
-    | [<AltCommandLine "-q">] Queries of nqueries: uint
-    | [<AltCommandLine "-w">] Wait of max: float * herewait: float * nearwait: float
-    | [<AltCommandLine "-W">] Sendwait of msec: float
+    | [<AltCommandLine "-q">] Queries of nqueries: int
+    | [<AltCommandLine "-w">] Timeout of msec: float
     | [<AltCommandLine "-b">] Bytes of length: uint
     | [<MainCommandAttribute; ExactlyOnce>] Host of host: string
 
@@ -31,9 +29,8 @@ type CliArguments =
             | Port _ -> "Set the destination port to use"
             | First _ -> "Set the initial TTL value"
             | Max _ -> "Set the max number of hops (max TTL to be reached)"
-            | Sim_Queries _ -> "Set the number of probes to be tried simultaneously"
             | Queries _ -> "Set the number of probes per each hop"
-            | Sendwait _ -> "Minimal time interval between probes"
+            | Timeout _ -> "Maximum time to wait for each probe"
             | Bytes _ -> "How many bytes should be sent in each probe"
             | Host _ -> "The host to trace the route to"
 
@@ -117,21 +114,13 @@ let configure argv =
             | UDPLITE -> 53us
         )
 
-    let (maxwait, herewait, nearwait) =
-        results.TryGetResult Wait |> Option.defaultValue (3.0, 10.0, 5.0)
-
     { protocol = protocol
       localEP = localEP
       remoteEP = IPEndPoint(remote, int port)
 
-      maxwait = maxwait
-      herewait = herewait
-      nearwait = nearwait
-
-      sendwait = results.TryGetResult Sendwait |> Option.defaultValue 0.0
-      bytes = results.TryGetResult Bytes |> Option.defaultValue 40u
-      tos = results.TryGetResult Tos |> Option.defaultValue 0uy
-      first_ttl = results.TryGetResult First |> Option.defaultValue 1u
-      max_ttl = results.TryGetResult Max |> Option.defaultValue 30u
-      nqueries = results.TryGetResult Queries |> Option.defaultValue 3u
-      squeries = results.TryGetResult Sim_Queries |> Option.defaultValue 16u }
+      timeout = int (results.TryGetResult Timeout |> Option.defaultValue 3000)
+      bytes = int (results.TryGetResult Bytes |> Option.defaultValue 40u)
+      tos = int (results.TryGetResult Tos |> Option.defaultValue 0uy)
+      first_ttl = int (results.TryGetResult First |> Option.defaultValue 1u)
+      max_ttl = int (results.TryGetResult Max |> Option.defaultValue 30u)
+      queries = results.TryGetResult Queries |> Option.defaultValue 3 }
