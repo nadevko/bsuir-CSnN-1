@@ -12,10 +12,11 @@ type CliArguments =
     | [<AltCommandLine "-t">] Tos of tos: uint8
     | [<AltCommandLine "-P">] Protocol of protocol: Protocols
     | [<AltCommandLine "-p">] Port of port: uint16
-    | [<AltCommandLine "-f">] First of first_ttl: uint
-    | [<AltCommandLine "-m">] Max of max_ttl: uint
+    | [<AltCommandLine "-f">] First of first_ttl: uint16
+    | [<AltCommandLine "-m">] Max of max_ttl: uint16
     | [<AltCommandLine "-q">] Queries of nqueries: int
-    | [<AltCommandLine "-w">] Timeout of msec: float
+    | [<AltCommandLine "-s">] Send_Timeout of sec: float
+    | [<AltCommandLine "-r">] Receive_Timeout of sec: float
     | [<AltCommandLine "-b">] Bytes of length: uint
     | [<MainCommandAttribute; ExactlyOnce>] Host of host: string
 
@@ -30,7 +31,8 @@ type CliArguments =
             | First _ -> "Set the initial TTL value"
             | Max _ -> "Set the max number of hops (max TTL to be reached)"
             | Queries _ -> "Set the number of probes per each hop"
-            | Timeout _ -> "Maximum time to wait for each probe"
+            | Send_Timeout _ -> "Maximum time to send for each probe"
+            | Receive_Timeout _ -> "Maximum time to receive for each probe"
             | Bytes _ -> "How many bytes should be sent in each probe"
             | Host _ -> "The host to trace the route to"
 
@@ -86,7 +88,7 @@ let configure argv =
             match IPAddress.TryParse(hostName) with
             | true, ip -> ip
             | false, _ ->
-                let addresses = Dns.GetHostAddresses(hostName)
+                let addresses = Dns.GetHostAddresses hostName
 
                 let addresses' =
                     match ipVersion with
@@ -117,9 +119,12 @@ let configure argv =
       localEP = IPEndPoint(localEPAdress, 0)
       remoteEP = IPEndPoint(remote, int port)
 
-      timeout = int (results.TryGetResult Timeout |> Option.defaultValue 3000)
+      sendTime = 1000 * int (results.TryGetResult Send_Timeout |> Option.defaultValue 3.0)
+      receiveTime = 1000 * int (results.TryGetResult Receive_Timeout |> Option.defaultValue 3.0)
+
       bytes = int (results.TryGetResult Bytes |> Option.defaultValue 40u)
       tos = int (results.TryGetResult Tos |> Option.defaultValue 0uy)
-      first_ttl = int (results.TryGetResult First |> Option.defaultValue 1u)
-      max_ttl = int (results.TryGetResult Max |> Option.defaultValue 30u)
+
+      first_ttl = results.TryGetResult First |> Option.defaultValue 1us
+      max_ttl = results.TryGetResult Max |> Option.defaultValue 30us
       queries = results.TryGetResult Queries |> Option.defaultValue 3 }

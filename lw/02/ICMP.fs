@@ -81,21 +81,60 @@ let createIcmpEcho addresess =
         addresess
 
 let route (config: Config) =
+    let isIPv6 = config.remoteEP.AddressFamily = AddressFamily.InterNetworkV6
+
     use socket =
         new Socket(
             config.remoteEP.AddressFamily,
             SocketType.Raw,
-            match config.remoteEP.AddressFamily with
-            | AddressFamily.InterNetworkV6 -> ProtocolType.IcmpV6
-            | _ -> ProtocolType.Icmp
+            if isIPv6 then ProtocolType.IcmpV6 else ProtocolType.Icmp
         )
 
-    let createEcho =
+    socket.Bind config.localEP
+    socket.SendTimeout <- config.sendTime
+    socket.ReceiveTimeout <- config.receiveTime
+
+    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, config.tos)
+
+    let echoRequest =
         createIcmpEcho
-            (match config.remoteEP.AddressFamily with
-             | AddressFamily.InterNetworkV6 ->
-                 Some(config.localEP.Address.GetAddressBytes(), config.remoteEP.Address.GetAddressBytes())
-             | _ -> None)
+            (if isIPv6 then
+                 Some(config.localEP.Address.GetAddressBytes(), config.localEP.Address.GetAddressBytes())
+             else
+                 None)
             config.bytes
 
-    createEcho 0us
+    let rec loop ttl =
+        let mutable remoteEP: Net.EndPoint = config.remoteEP :> Net.EndPoint
+        socket.Ttl <- int16 ttl
+
+        printf "%*d" (config.max_ttl.ToString().Length) ttl
+
+        try
+            let reqBuffer = echoRequest ttl
+            let resBuffer = Array.zeroCreate<byte> 1024
+
+            let sw = Diagnostics.Stopwatch.StartNew()
+
+            socket.SendTo(reqBuffer, remoteEP) |> ignore
+
+            socket.ReceiveFrom(resBuffer, 0, resBuffer.Length, SocketFlags.None, &remoteEP)
+            |> ignore
+
+            sw.Stop()
+            let ep = (remoteEP :?> Net.IPEndPoint).Address
+
+            if ep = config.localEP.Address then
+                printfn "  *"
+            else
+                printfn "  %s  %.3f ms" (makeHostIPPair ep) sw.Elapsed.TotalMilliseconds
+        with :? SocketException ->
+            printfn "  *"
+
+        if
+            ttl <= config.max_ttl
+            && (remoteEP :?> Net.IPEndPoint).Address <> config.remoteEP.Address
+        then
+            loop (ttl + 1us)
+
+    loop config.first_ttl

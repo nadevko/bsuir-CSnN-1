@@ -13,9 +13,16 @@ type Config =
     { protocol: Protocols
       localEP: IPEndPoint
       remoteEP: IPEndPoint
-      timeout: int
+      sendTime: int
+      receiveTime: int
       bytes: int
       tos: int
-      first_ttl: int
-      max_ttl: int
+      first_ttl: uint16
+      max_ttl: uint16
       queries: int }
+
+let makeHostIPPair (ip: IPAddress) =
+    try
+        (System.Net.Dns.GetHostEntry ip).HostName + " (" + (ip.ToString()) + ")"
+    with :? Sockets.SocketException ->
+        ip.ToString()
