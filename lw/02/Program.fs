@@ -5,7 +5,7 @@ open Config
 let argv = System.Environment.GetCommandLineArgs() |> Array.skip 1
 
 let main (argv: string array) =
-    let cfg: Config = Arguments.configure argv
+    let cfg = Arguments.configure argv
     let remoteIP = cfg.remoteEP.Address
     printfn "Traceroute to %s (%s)" (System.Net.Dns.GetHostEntry remoteIP).HostName (remoteIP.ToString())
 
@@ -18,7 +18,7 @@ let main (argv: string array) =
        | UDPLITE -> failwith "UDP lite is not implemented"
 
 #if DEBUG
-main argv
+main argv |> printfn "%A"
 #else
 try
     main argv

@@ -64,9 +64,9 @@ let configure argv =
 
     let protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
 
-    let localEP =
+    let localEPAdress =
         match results.TryGetResult Interface with
-        | None -> IPEndPoint(IPAddress.Any, 0)
+        | None -> IPAddress.Any
         | Some device ->
             try
                 NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
@@ -76,7 +76,6 @@ let configure argv =
                 |> match ipVersion with
                    | None -> Seq.head
                    | Some af -> Seq.find (fun x -> af = x.AddressFamily)
-                |> fun x -> IPEndPoint(x, 0)
             with :? System.Collections.Generic.KeyNotFoundException as ex ->
                 failwith $"Device with ID '{device}' not found."
 
@@ -115,7 +114,7 @@ let configure argv =
         )
 
     { protocol = protocol
-      localEP = localEP
+      localEP = IPEndPoint(localEPAdress, 0)
       remoteEP = IPEndPoint(remote, int port)
 
       timeout = int (results.TryGetResult Timeout |> Option.defaultValue 3000)
