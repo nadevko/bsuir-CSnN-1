@@ -48,18 +48,18 @@ let icmpId = uint16 (Diagnostics.Process.GetCurrentProcess().Id % 65536)
 let createIcmpEcho = createIcmpPacket 8uy 0uy icmpId
 
 let route (config: Config) =
-    use socket =
-        new Socket()
+    // use socket =
+        // new Socket()
 
-    socket.Bind config.localEP
-    socket.SendTimeout <- config.sendTime
-    socket.ReceiveTimeout <- config.receiveTime
+    // socket.Bind config.localEP
+    // socket.SendTimeout <- config.sendTime
+    // socket.ReceiveTimeout <- config.receiveTime
 
-    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, config.tos)
+    // socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, config.tos)
 
     let rec loop ttl =
         let mutable remoteEP: Net.EndPoint = config.remoteEP :> Net.EndPoint
-        socket.Ttl <- int16 ttl
+        // socket.Ttl <- int16 ttl
 
         printf "%*d" (config.max_ttl.ToString().Length) ttl
 
@@ -69,10 +69,10 @@ let route (config: Config) =
 
             let sw = Diagnostics.Stopwatch.StartNew()
 
-            socket.SendTo(reqBuffer, remoteEP) |> ignore
+            // socket.SendTo(reqBuffer, remoteEP) |> ignore
 
-            socket.ReceiveFrom(resBuffer, 0, resBuffer.Length, SocketFlags.None, &remoteEP)
-            |> ignore
+            // socket.ReceiveFrom(resBuffer, 0, resBuffer.Length, SocketFlags.None, &remoteEP)
+            // |> ignore
 
             sw.Stop()
             let ep = (remoteEP :?> Net.IPEndPoint).Address

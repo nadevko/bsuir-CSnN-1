@@ -1,5 +1,3 @@
-*.png binary
-*.ico binary
-*.svg binary
-*.pdf binary
-*.xlsx binary
+* eol=auto
+*.sh eol=lf
+*.nix eol=lf

@@ -2,6 +2,13 @@
 .direnv
 .vscode
 
+bin/
+obj/
+result
+*.DotSettings.user
+.idea/
+.analyzerpackages/
+
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof
