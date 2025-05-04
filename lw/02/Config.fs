@@ -4,13 +4,15 @@ open System.Net
 
 type Protocols =
     | ICMP
+    | ICMPv6
     | TCP
     | UDP
     | UDDP
     | UDPLITE
 
 type Config =
-    { protocol: Protocols
+    { isIPv6: bool option
+      protocol: Protocols
       localEP: IPEndPoint
       remoteEP: IPEndPoint
       sendTime: int

@@ -11,10 +11,7 @@ let main (argv: string array) =
     cfg
     |> match cfg.protocol with
        | ICMP -> ICMP.route
-       | TCP -> failwith "TCP is not implemented"
-       | UDP -> failwith "UDP is not implemented"
-       | UDDP -> failwith "UDDP is not implemented"
-       | UDPLITE -> failwith "UDP lite is not implemented"
+       | _ -> cfg.protocol.ToString() |> sprintf "%s is not implemented" |> failwith
 
 #if DEBUG
 main argv

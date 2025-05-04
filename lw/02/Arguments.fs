@@ -58,15 +58,15 @@ let configure argv =
             .ParseCommandLine
             argv
 
-    let ipVersion =
+    let isIPv6 =
         match results.TryGetResult IP_Version with
-        | Some 4uy -> Some Sockets.AddressFamily.InterNetwork
-        | Some 6uy -> Some Sockets.AddressFamily.InterNetworkV6
+        | Some 4uy -> Some false
+        | Some 6uy -> Some true
         | _ -> None
 
     let protocol = results.TryGetResult Protocol |> Option.defaultValue ICMP
 
-    let localEPAdress =
+    let local =
         match results.TryGetResult Interface with
         | None -> IPAddress.Any
         | Some device ->
@@ -75,32 +75,30 @@ let configure argv =
                 |> Array.find (fun x -> device = x.Id)
                 |> fun x -> x.GetIPProperties().UnicastAddresses
                 |> Seq.map (fun x -> x.Address)
-                |> match ipVersion with
+                |> match isIPv6 with
                    | None -> Seq.head
-                   | Some af -> Seq.find (fun x -> af = x.AddressFamily)
+                   | Some true -> Seq.find (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetworkV6)
+                   | Some false -> Seq.find (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetwork)
             with :? System.Collections.Generic.KeyNotFoundException as ex ->
-                failwith $"Device with ID '{device}' not found."
+                device |> sprintf "Device with ID '%s' not found." |> failwith
 
     let remote =
         try
             let hostName = results.GetResult Host
 
-            match IPAddress.TryParse(hostName) with
+            match IPAddress.TryParse hostName with
             | true, ip -> ip
             | false, _ ->
-                let addresses = Dns.GetHostAddresses hostName
-
-                let addresses' =
-                    match ipVersion with
-                    | Some Sockets.AddressFamily.InterNetwork ->
-                        addresses
-                        |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetwork)
-                    | Some Sockets.AddressFamily.InterNetworkV6 ->
-                        addresses
-                        |> Array.filter (fun x -> x.AddressFamily = Sockets.AddressFamily.InterNetworkV6)
-                    | _ -> addresses
-
-                addresses'[0]
+                Dns.GetHostAddresses hostName
+                |> Array.filter (fun address ->
+                    match isIPv6 with
+                    | Some true -> address.AddressFamily = Sockets.AddressFamily.InterNetworkV6
+                    | Some false -> address.AddressFamily = Sockets.AddressFamily.InterNetwork
+                    | None -> true)
+                |> Array.tryHead
+                |> function
+                    | Some address -> address
+                    | None -> failwith "No suitable IP address found."
         with :? Sockets.SocketException as ex ->
             failwithf "Failed to resolve host: %s" ex.Message
 
@@ -108,15 +106,17 @@ let configure argv =
         results.TryGetResult Port
         |> Option.defaultValue (
             match protocol with
-            | ICMP -> 33434us
+            | ICMP
+            | ICMPv6 -> 33434us
             | TCP -> 80us
-            | UDP -> 53us
-            | UDDP -> 33434us
+            | UDP
             | UDPLITE -> 53us
+            | UDDP -> 33434us
         )
 
-    { protocol = protocol
-      localEP = IPEndPoint(localEPAdress, 0)
+    { isIPv6 = isIPv6
+      protocol = protocol
+      localEP = IPEndPoint(local, 0)
       remoteEP = IPEndPoint(remote, int port)
 
       sendTime = 1000 * int (results.TryGetResult Send_Timeout |> Option.defaultValue 3.0)
