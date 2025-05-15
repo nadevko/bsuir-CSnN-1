@@ -79,19 +79,19 @@ let main (args : string[]) : int =
 
         try
             let options =
-                ({ Hostname = ctx.ParseResult.GetValueForArgument hostArgument
-                   Port = ctx.ParseResult.GetValueForOption portOption
-                   SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
-                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
-                   MaxTTL = ctx.ParseResult.GetValueForOption maxHopsOption
-                   FirstTTL = ctx.ParseResult.GetValueForOption firstTtlOption
-                   Queries = ctx.ParseResult.GetValueForOption queriesOption
-                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
-                   IpVersion =
-                     if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
-                     elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
-                     else Auto
-                   PacketLen = if packetLen.HasValue then packetLen.Value - 28u else 0u })
+                { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
+                  Port = int (ctx.ParseResult.GetValueForOption portOption)
+                  SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
+                  ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
+                  MaxTTL = ctx.ParseResult.GetValueForOption maxHopsOption
+                  FirstTTL = ctx.ParseResult.GetValueForOption firstTtlOption
+                  Queries = ctx.ParseResult.GetValueForOption queriesOption
+                  ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
+                  IpVersion =
+                    if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
+                    elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
+                    else Any
+                  datagramLength = if packetLen.HasValue then int packetLen.Value - 28 else 0 }
 
             let probe =
                 match ctx.ParseResult.GetValueForOption protoOption with
