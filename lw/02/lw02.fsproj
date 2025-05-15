@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Config.fs" />
+    <Compile Include="Traceroute.fs" />
     <Compile Include="UDP.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

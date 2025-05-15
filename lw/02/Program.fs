@@ -77,27 +77,27 @@ let main (args : string[]) : int =
     rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
         let packetLen = ctx.ParseResult.GetValueForArgument packetLenArgument
 
-        let options =
-            { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
-              Port = ctx.ParseResult.GetValueForOption portOption
-              SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
-              ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
-              MaxTTL = ctx.ParseResult.GetValueForOption maxHopsOption
-              FirstTTL = ctx.ParseResult.GetValueForOption firstTtlOption
-              Queries = ctx.ParseResult.GetValueForOption queriesOption
-              ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
-              IpVersion =
-                if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
-                elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
-                else Auto
-              PacketLen = if packetLen.HasValue then packetLen.Value - 28u else 0u }
-
-        let traceroute =
-            match ctx.ParseResult.GetValueForOption protoOption with
-            | _ -> UDP.traceroute
-
         try
-            UDP.traceroute options
+            let options =
+                ({ Hostname = ctx.ParseResult.GetValueForArgument hostArgument
+                   Port = ctx.ParseResult.GetValueForOption portOption
+                   SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
+                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
+                   MaxTTL = ctx.ParseResult.GetValueForOption maxHopsOption
+                   FirstTTL = ctx.ParseResult.GetValueForOption firstTtlOption
+                   Queries = ctx.ParseResult.GetValueForOption queriesOption
+                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
+                   IpVersion =
+                     if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
+                     elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
+                     else Auto
+                   PacketLen = if packetLen.HasValue then packetLen.Value - 28u else 0u })
+
+            let probe =
+                match ctx.ParseResult.GetValueForOption protoOption with
+                | _ -> UDP.probe
+
+            Traceroute.trace probe options
             ctx.ExitCode <- 0
         with ex ->
             printfn "Error: %s" ex.Message
