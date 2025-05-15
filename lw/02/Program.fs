@@ -1,58 +1,151 @@
-﻿open System.Net
-open System.Net.Sockets
+﻿module CSnN1.Lw02.Program
+open CSnN1.Lw02.Config
 
-let getResultString (ipAddress : IPAddress) =
-    try
-        let hostEntry = Dns.GetHostEntry (ipAddress)
+open System
+open System.CommandLine
 
-        if System.String.IsNullOrEmpty (hostEntry.HostName) then
-            ipAddress.ToString ()
-        else
-            sprintf "%s (%s)" hostEntry.HostName (ipAddress.ToString ())
-    with _ ->
-        ipAddress.ToString ()
+[<EntryPoint>]
+let main (args : string[]) : int =
+    let rootCommand = new RootCommand "F# implementation of traceroute utility"
 
-let traceroute (hostname : string) (maxHops : int) (port : int) (timeout : int) =
-    let destIP =
+    let protoOption = new Option<Protocol> ("--proto", "Set the protocol to use.")
+    protoOption.AddAlias "-P"
+    protoOption.SetDefaultValue UDP
+    rootCommand.AddOption protoOption
+
+    let ipv4Option = new Option<bool> ("--ipv4", "Use IPv4")
+    ipv4Option.AddAlias "-4"
+    rootCommand.AddOption ipv4Option
+
+    let ipv6Option = new Option<bool> ("--ipv6", "Use IPv6")
+    ipv6Option.AddAlias "-6"
+    rootCommand.AddOption ipv6Option
+
+    let firstTtlOption = new Option<uint> ("--first", "Start from the first_ttl hop")
+    firstTtlOption.AddAlias "-f"
+    firstTtlOption.SetDefaultValue 1u
+    rootCommand.AddOption firstTtlOption
+
+    let maxHopsOption =
+        new Option<uint> ("--max", "Set the max number of hops (max TTL to be reached).")
+
+    maxHopsOption.AddAlias "-m"
+    maxHopsOption.SetDefaultValue 30u
+    rootCommand.AddOption maxHopsOption
+
+    let noResolveOption =
+        new Option<bool> ("--no-resolve", "Do not resolve IP addresses to their domain names")
+
+    noResolveOption.AddAlias "-n"
+    rootCommand.AddOption noResolveOption
+
+    let portOption = new Option<uint16> ("--port", "Set the destination port to use.")
+    portOption.AddAlias "-p"
+    portOption.SetDefaultValue 33434us
+    rootCommand.AddOption portOption
+
+    let queriesOption =
+        new Option<uint> ("--queries", "Set the number of probes per each hop.")
+
+    queriesOption.AddAlias "-q"
+    queriesOption.SetDefaultValue 3u
+    rootCommand.AddOption queriesOption
+
+    let sendTimeoutOption =
+        new Option<float> ("--send", "Maximum time in seconds to wait for sending packets")
+
+    sendTimeoutOption.AddAlias "-s"
+    sendTimeoutOption.SetDefaultValue 3.0
+    rootCommand.AddOption sendTimeoutOption
+
+    let receiveTimeoutOption =
+        new Option<float> ("--receive", "Maximum time in seconds to wait for receiving responses")
+
+    receiveTimeoutOption.AddAlias "-r"
+    receiveTimeoutOption.SetDefaultValue 0.5
+    rootCommand.AddOption receiveTimeoutOption
+
+    let hostArgument = new Argument<string> ("host", "The host to traceroute to")
+    rootCommand.AddArgument hostArgument
+
+    let packetLenArgument =
+        new Argument<Nullable<uint>> ("packetlen", "The full packet length")
+
+    packetLenArgument.SetDefaultValue (Nullable<uint> ())
+    rootCommand.AddArgument packetLenArgument
+
+    rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
+        let packetLen = ctx.ParseResult.GetValueForArgument packetLenArgument
+
+        let options =
+            { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
+              MaxHops = ctx.ParseResult.GetValueForOption maxHopsOption
+              Port = ctx.ParseResult.GetValueForOption portOption
+              SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
+              ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
+              FirstTtl = ctx.ParseResult.GetValueForOption firstTtlOption
+              Queries = ctx.ParseResult.GetValueForOption queriesOption
+              ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
+              IpVersion =
+                if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
+                elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
+                else Auto
+              PacketLen = if packetLen.HasValue then packetLen.Value else 0u }
+        let traceroute =
+            match ctx.ParseResult.GetValueForOption protoOption with
+            | _ -> UDP.traceroute
+
         try
-            Dns.GetHostEntry(hostname).AddressList
-            |> Array.find (fun ip -> ip.AddressFamily = AddressFamily.InterNetwork)
-        with _ ->
-            failwithf "Host are not resolved: %s" hostname
+            UDP.traceroute options
+            ctx.ExitCode <- 0
+        with ex ->
+            printfn "Error: %s" ex.Message
+            ctx.ExitCode <- 1
+    )
 
-    use receiver =
-        new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
+    rootCommand.AddValidator (fun result ->
+        if result.GetValueForArgument hostArgument = null then
+            result.ErrorMessage <- "The host argument is required."
+    )
 
-    receiver.ReceiveTimeout <- timeout
-    receiver.Bind (new IPEndPoint (IPAddress.Any, 0))
-    let destEP = new IPEndPoint (destIP, port)
+    rootCommand.AddValidator (fun result ->
+        let firstTtl = result.GetValueForOption firstTtlOption
+        let maxHops = result.GetValueForOption maxHopsOption
 
-    printfn "traceroute to %s (%A), %d hops max" hostname destIP maxHops
+        if firstTtl > maxHops then
+            result.ErrorMessage <- "First TTL must be less than or equal to max hops."
+    )
 
-    let mutable isReached = false
-    let mutable ttl = 1
+    rootCommand.AddValidator (fun result ->
+        let queries = result.GetValueForOption queriesOption
 
-    while ttl <= maxHops && not isReached do
-        use client = new UdpClient ()
-        client.Client.Ttl <- int16 ttl
-        client.Send ([| 0uy |], 1, destEP) |> ignore
+        if queries <= 0u then
+            result.ErrorMessage <- "Number of queries must be greater than 0."
+    )
 
-        let mutable result = "*"
+    rootCommand.AddValidator (fun result ->
+        let sendWait = result.GetValueForOption sendTimeoutOption
+        let receiveWait = result.GetValueForOption receiveTimeoutOption
 
-        try
-            let mutable buffer = Array.zeroCreate 512
-            let mutable remoteEP = new IPEndPoint (IPAddress.Any, 0) :> EndPoint
-            receiver.ReceiveFrom (buffer, &remoteEP) |> ignore
-            let remoteEP' = remoteEP :?> IPEndPoint
-            let remoteIP = remoteEP'.Address
-            result <- getResultString remoteIP
-            printfn "%2d  %s" ttl result
+        if sendWait <= 0.0 then
+            result.ErrorMessage <- "Send timeout must be greater than 0."
+        elif receiveWait <= 0.0 then
+            result.ErrorMessage <- "Receive timeout must be greater than 0."
+    )
 
-            if remoteEP'.Address.Equals destIP then
-                isReached <- true
-        with :? SocketException ->
-            printfn "%2d  *" ttl
+    rootCommand.AddValidator (fun result ->
+        let ipv4 = result.GetValueForOption ipv4Option
+        let ipv6 = result.GetValueForOption ipv6Option
 
-        ttl <- ttl + 1
+        if ipv4 && ipv6 then
+            result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
+    )
 
-traceroute "1.1.1.1" 30 33434 3000
+    rootCommand.AddValidator (fun result ->
+        let protocol = result.GetValueForOption protoOption
+
+        if not protocol.IsUDP then
+            result.ErrorMessage <- "Only UDP protocol is supported."
+    )
+
+    rootCommand.Invoke args
