@@ -3,7 +3,11 @@
   inputs.mkflake.url = "github:jonascarpay/mkflake";
 
   outputs =
-    { nixpkgs, mkflake, ... }:
+    {
+      self,
+      nixpkgs,
+      mkflake,
+    }:
     mkflake.lib.mkflake {
       perSystem =
         system: with nixpkgs.legacyPackages.${system}; {
@@ -16,6 +20,16 @@
             src = ./.;
             nugetDeps = ./deps.nix;
             doCheck = true;
+          };
+        };
+      topLevel.nixosModules.default =
+        { config, ... }:
+        {
+          security.wrappers.lw02 = {
+            owner = "root";
+            group = "root";
+            capabilities = "cap_net_raw+eip";
+            source = "${self.packages.${config.nixpkgs.system}.default}/bin/lw02";
           };
         };
     };

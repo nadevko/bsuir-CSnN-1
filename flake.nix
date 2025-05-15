@@ -8,7 +8,7 @@
     bsuir-tex.url = "github:nadevko/bsuir-TeX-1/v0.1";
     bsuir-tex.inputs.nixpkgs.follows = "nixpkgs";
 
-    lw02.url = "./lw/02";
+    lw02.url = "path:./lw/02";
     lw02.inputs.nixpkgs.follows = "nixpkgs";
     lw02.inputs.mkflake.follows = "mkflake";
 
@@ -69,5 +69,13 @@
           };
           formatter = treefmt.wrapper;
         };
+      topLevel.nixosModules = {
+        default =
+          { config, ... }:
+          {
+            imports = [ lw02.nixosModules.default ];
+          };
+        lw02 = lw02.nixosModules.default;
+      };
     };
 }

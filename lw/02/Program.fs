@@ -1,15 +1,18 @@
 ﻿open System.Net
 open System.Net.Sockets
 
-let getResultString (ipAddress: IPAddress) =
+let getResultString (ipAddress : IPAddress) =
     try
-        let hostEntry = Dns.GetHostEntry(ipAddress)
-        if System.String.IsNullOrEmpty(hostEntry.HostName) then ipAddress.ToString()
-        else sprintf "%s (%s)" hostEntry.HostName (ipAddress.ToString())
-    with
-    | _ -> ipAddress.ToString()
+        let hostEntry = Dns.GetHostEntry (ipAddress)
 
-let traceroute (hostname : string) (maxHops : int) (port: int) (timeout: int) =
+        if System.String.IsNullOrEmpty (hostEntry.HostName) then
+            ipAddress.ToString ()
+        else
+            sprintf "%s (%s)" hostEntry.HostName (ipAddress.ToString ())
+    with _ ->
+        ipAddress.ToString ()
+
+let traceroute (hostname : string) (maxHops : int) (port : int) (timeout : int) =
     let destIP =
         try
             Dns.GetHostEntry(hostname).AddressList
