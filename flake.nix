@@ -24,7 +24,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          dotnet-sdk = pkgs.dotnet-sdk_8;
+          dotnet-sdk = with pkgs.dotnetCorePackages; combinePackages [ dotnet_9.sdk dotnet_8.sdk ];
           dotnet-runtime = pkgs.dotnetCorePackages.runtime_8_0;
           dotnetSixTool =
             dllOverride: toolName:
