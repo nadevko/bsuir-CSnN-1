@@ -1,4 +1,5 @@
 ﻿module CSnN1.Lw02.Program
+
 open CSnN1.Lw02.Config
 
 open System
@@ -21,16 +22,16 @@ let main (args : string[]) : int =
     ipv6Option.AddAlias "-6"
     rootCommand.AddOption ipv6Option
 
-    let firstTtlOption = new Option<uint> ("--first", "Start from the first_ttl hop")
+    let firstTtlOption = new Option<uint16> ("--first", "Start from the first_ttl hop")
     firstTtlOption.AddAlias "-f"
-    firstTtlOption.SetDefaultValue 1u
+    firstTtlOption.SetDefaultValue 1us
     rootCommand.AddOption firstTtlOption
 
     let maxHopsOption =
-        new Option<uint> ("--max", "Set the max number of hops (max TTL to be reached).")
+        new Option<uint16> ("--max", "Set the max number of hops (max TTL to be reached).")
 
     maxHopsOption.AddAlias "-m"
-    maxHopsOption.SetDefaultValue 30u
+    maxHopsOption.SetDefaultValue 30us
     rootCommand.AddOption maxHopsOption
 
     let noResolveOption =
@@ -55,7 +56,6 @@ let main (args : string[]) : int =
         new Option<float> ("--send", "Maximum time in seconds to wait for sending packets")
 
     sendTimeoutOption.AddAlias "-s"
-    sendTimeoutOption.SetDefaultValue 3.0
     rootCommand.AddOption sendTimeoutOption
 
     let receiveTimeoutOption =
@@ -69,7 +69,7 @@ let main (args : string[]) : int =
     rootCommand.AddArgument hostArgument
 
     let packetLenArgument =
-        new Argument<Nullable<uint>> ("packetlen", "The full packet length")
+        new Argument<Nullable<uint>> ("packetlen", "The full packet length in bytes")
 
     packetLenArgument.SetDefaultValue (Nullable<uint> ())
     rootCommand.AddArgument packetLenArgument
@@ -79,18 +79,19 @@ let main (args : string[]) : int =
 
         let options =
             { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
-              MaxHops = ctx.ParseResult.GetValueForOption maxHopsOption
               Port = ctx.ParseResult.GetValueForOption portOption
               SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
               ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
-              FirstTtl = ctx.ParseResult.GetValueForOption firstTtlOption
+              MaxTTL = ctx.ParseResult.GetValueForOption maxHopsOption
+              FirstTTL = ctx.ParseResult.GetValueForOption firstTtlOption
               Queries = ctx.ParseResult.GetValueForOption queriesOption
               ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
               IpVersion =
                 if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
                 elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
                 else Auto
-              PacketLen = if packetLen.HasValue then packetLen.Value else 0u }
+              PacketLen = if packetLen.HasValue then packetLen.Value - 28u else 0u }
+
         let traceroute =
             match ctx.ParseResult.GetValueForOption protoOption with
             | _ -> UDP.traceroute
@@ -127,10 +128,10 @@ let main (args : string[]) : int =
         let sendWait = result.GetValueForOption sendTimeoutOption
         let receiveWait = result.GetValueForOption receiveTimeoutOption
 
-        if sendWait <= 0.0 then
-            result.ErrorMessage <- "Send timeout must be greater than 0."
-        elif receiveWait <= 0.0 then
-            result.ErrorMessage <- "Receive timeout must be greater than 0."
+        if sendWait < 0.0 then
+            result.ErrorMessage <- "Send timeout must be non-negative."
+        elif receiveWait < 0.0 then
+            result.ErrorMessage <- "Receive timeout must be non-negative."
     )
 
     rootCommand.AddValidator (fun result ->
@@ -144,8 +145,15 @@ let main (args : string[]) : int =
     rootCommand.AddValidator (fun result ->
         let protocol = result.GetValueForOption protoOption
 
-        if not protocol.IsUDP then
+        if protocol <> UDP then
             result.ErrorMessage <- "Only UDP protocol is supported."
+    )
+
+    rootCommand.AddValidator (fun result ->
+        let packetLen = result.GetValueForArgument packetLenArgument
+
+        if packetLen.HasValue && packetLen.Value <= 28u then
+            result.ErrorMessage <- "Packet can't be less than 28 bytes."
     )
 
     rootCommand.Invoke args
