@@ -82,6 +82,11 @@ let main (args : string[]) : int =
     queriesOption.SetDefaultValue 3u
     rootCommand.AddOption queriesOption
 
+    let jobsOption = new Option<int> ("--jobs", "Set the number of parallel probes")
+    jobsOption.AddAlias "-j"
+    jobsOption.SetDefaultValue 1
+    rootCommand.AddOption jobsOption
+
     let sendTimeoutOption =
         new Option<float> ("--send", "Maximum time in seconds to wait for sending packets")
 
@@ -130,6 +135,7 @@ let main (args : string[]) : int =
                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
                   MaxTTL = int (ctx.ParseResult.GetValueForOption maxHopsOption)
                   FirstTTL = int (ctx.ParseResult.GetValueForOption firstTtlOption)
+                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption)
                   Queries = ctx.ParseResult.GetValueForOption queriesOption
                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
                   IpVersion = IpVersion

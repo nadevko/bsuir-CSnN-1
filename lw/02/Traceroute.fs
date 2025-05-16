@@ -7,20 +7,24 @@ open System.Net.Sockets
 
 let resolveHostname (hostname : string) (ipVersion : IpVersion) =
     let hostEntry = Dns.GetHostEntry hostname
-    let allAddresses = hostEntry.AddressList
+    let addresses = hostEntry.AddressList
 
-    if allAddresses.Length = 0 then
+    if addresses.Length = 0 then
         raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
 
     let selectedIp =
         match
-            allAddresses
-            |> Array.tryFind (fun ip ->
-                match ipVersion with
-                | Any -> true
-                | IPv4 when ip.AddressFamily = AddressFamily.InterNetwork -> true
-                | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
-                | _ -> false
+            addresses
+            |> Array.tryFind (fun ip -> ip.ToString () = hostname)
+            |> Option.orElse (
+                addresses
+                |> Array.tryFind (fun ip ->
+                    match ipVersion with
+                    | Any -> true
+                    | IPv4 when ip.AddressFamily = AddressFamily.InterNetwork -> true
+                    | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
+                    | _ -> false
+                )
             )
         with
         | Some ip -> ip
@@ -29,15 +33,15 @@ let resolveHostname (hostname : string) (ipVersion : IpVersion) =
                 WebException (sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname)
             )
 
-    allAddresses, selectedIp
+    addresses, selectedIp
 
 let trace (probe : Probe) (options : TraceOptions) =
     let nSpace = options.MaxTTL.ToString().Length
 
-    let shouldEndTrace (result : ProbeResult) (ttl : int) =
+    let mustEndTrace (result : ProbeResult) (ttl : int) =
         match result with
         | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
-        | None -> ttl >= options.MaxTTL
+        | None -> ttl > options.MaxTTL
 
     let printHopResult (ttl : int) (result : ProbeResult) =
         printf "%*d  " nSpace ttl
@@ -69,17 +73,15 @@ let trace (probe : Probe) (options : TraceOptions) =
                   Addresses = allAddresses }
 
         let rec traceHop ttl =
-            if ttl > options.MaxTTL then
-                failwith "Max TTL reached"
-
             let result = probe' ttl
 
             printHopResult ttl result
 
-            if not (shouldEndTrace result ttl) then
+            if not (mustEndTrace result ttl) then
                 traceHop (ttl + 1)
 
-        traceHop options.FirstTTL
+        if options.FirstTTL <= options.MaxTTL then
+            traceHop options.FirstTTL
 
         dispose ()
 
