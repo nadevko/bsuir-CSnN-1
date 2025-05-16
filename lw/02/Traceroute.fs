@@ -5,7 +5,7 @@ open CSnN1.Lw02.Config
 open System.Net
 open System.Net.Sockets
 
-let resolveHostname (hostname : string) (ipVersion : IpVersion) : IPAddress array * IPAddress =
+let resolveHostname (hostname : string) (ipVersion : IpVersion) =
     let hostEntry = Dns.GetHostEntry hostname
     let allAddresses = hostEntry.AddressList
 
@@ -34,12 +34,12 @@ let resolveHostname (hostname : string) (ipVersion : IpVersion) : IPAddress arra
 let trace (probe : Probe) (options : TracerouteOptions) =
     let nSpace = options.MaxTTL.ToString().Length
 
-    let shouldEndTrace (result : ProbeResult) (ttl : uint16) =
+    let shouldEndTrace (result : ProbeResult) (ttl : int) =
         match result with
         | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
-        | None -> ttl >= options.MaxTTL - 2us
+        | None -> ttl >= options.MaxTTL - 2
 
-    let printHopResult (ttl : uint16) (result : ProbeResult) =
+    let printHopResult (ttl : int) (result : ProbeResult) =
         printf "%*d  " nSpace ttl
 
         match result with
@@ -66,7 +66,7 @@ let trace (probe : Probe) (options : TracerouteOptions) =
             printHopResult ttl result
 
             if not (shouldEndTrace result ttl) then
-                traceHop (ttl + 1us)
+                traceHop (ttl + 1)
 
         traceHop options.FirstTTL
 
