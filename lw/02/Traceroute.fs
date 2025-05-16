@@ -31,13 +31,13 @@ let resolveHostname (hostname : string) (ipVersion : IpVersion) =
 
     allAddresses, selectedIp
 
-let trace (probe : Probe) (options : TracerouteOptions) =
+let trace (probe : Probe) (options : TraceOptions) =
     let nSpace = options.MaxTTL.ToString().Length
 
     let shouldEndTrace (result : ProbeResult) (ttl : int) =
         match result with
         | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
-        | None -> ttl >= options.MaxTTL - 2
+        | None -> ttl >= options.MaxTTL
 
     let printHopResult (ttl : int) (result : ProbeResult) =
         printf "%*d  " nSpace ttl
@@ -54,14 +54,18 @@ let trace (probe : Probe) (options : TracerouteOptions) =
             options.Hostname
             (targetIp.ToString ())
             options.MaxTTL
-            options.datagramLength
+            options.PayloadSize
 
         let rec traceHop ttl =
             if ttl > options.MaxTTL then
                 printfn "Trace terminated: reached maximum number of hops."
                 ()
 
-            let result = probe options targetIp allAddresses ttl
+            let result = probe options  {
+                 LocalEP = new IPEndPoint(IPAddress.Any, 0)
+                 RemoteEP = new IPEndPoint(targetIp, options.Port + ttl)
+                 Addresses = allAddresses
+                 Ttl = ttl}
 
             printHopResult ttl result
 

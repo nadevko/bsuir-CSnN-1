@@ -1,6 +1,9 @@
 module CSnN1.Lw02.Config
 
 open System.Net
+open System.Diagnostics
+
+let pid = Process.GetCurrentProcess().Id
 
 type IpVersion =
     | Any
@@ -10,11 +13,10 @@ type IpVersion =
 type Protocol =
     | ICMP
     | UDP
-    | TCP
 
 type ProbeResult = (IPAddress * int64 * int * int * bool) option
 
-type TracerouteOptions =
+type TraceOptions =
     { Hostname : string
       FirstTTL : int
       MaxTTL : int
@@ -24,6 +26,13 @@ type TracerouteOptions =
       Queries : uint
       ResolveNames : bool
       IpVersion : IpVersion
-      datagramLength : int }
+      PayloadSize : int }
 
-type Probe = TracerouteOptions -> IPAddress -> IPAddress array -> int -> ProbeResult
+type ProbeOptions = {
+    LocalEP : IPEndPoint
+    RemoteEP : IPEndPoint
+    Addresses : IPAddress array
+    Ttl : int
+}
+
+type Probe = TraceOptions -> ProbeOptions -> ProbeResult

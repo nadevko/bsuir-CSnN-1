@@ -9,9 +9,9 @@ open System.CommandLine
 let main (args : string[]) : int =
     let rootCommand = new RootCommand "F# implementation of traceroute utility"
 
-    let protoOption = new Option<Protocol> ("--proto", "Set the protocol to use.")
+    let protoOption = new Option<string> ("--proto", "Set the protocol to use.")
     protoOption.AddAlias "-P"
-    protoOption.SetDefaultValue UDP
+    protoOption.SetDefaultValue "UDP"
     rootCommand.AddOption protoOption
 
     let ipv4Option = new Option<bool> ("--ipv4", "Use IPv4")
@@ -68,14 +68,14 @@ let main (args : string[]) : int =
     let hostArgument = new Argument<string> ("host", "The host to traceroute to")
     rootCommand.AddArgument hostArgument
 
-    let packetLenArgument =
-        new Argument<Nullable<uint>> ("packetlen", "The full packet length in bytes")
+    let payloadSizeArgument =
+        new Argument<Nullable<uint>> ("payloadsize", "The payload length in bytes")
 
-    packetLenArgument.SetDefaultValue (Nullable<uint> ())
-    rootCommand.AddArgument packetLenArgument
+    payloadSizeArgument.SetDefaultValue (Nullable<uint> ())
+    rootCommand.AddArgument payloadSizeArgument
 
     rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
-        let packetLen = ctx.ParseResult.GetValueForArgument packetLenArgument
+        let packetLen = ctx.ParseResult.GetValueForArgument payloadSizeArgument
 
         try
             let options =
@@ -91,10 +91,11 @@ let main (args : string[]) : int =
                     if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
                     elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
                     else Any
-                  datagramLength = if packetLen.HasValue then int packetLen.Value - 28 else 0 }
+                  PayloadSize = if packetLen.HasValue then int packetLen.Value else 0 }
 
             let probe =
-                match ctx.ParseResult.GetValueForOption protoOption with
+                match (ctx.ParseResult.GetValueForOption protoOption).ToLower() with
+                | "i" | "icmp"  -> ICMP.probe
                 | _ -> UDP.probe
 
             Traceroute.trace probe options
@@ -140,20 +141,6 @@ let main (args : string[]) : int =
 
         if ipv4 && ipv6 then
             result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
-    )
-
-    rootCommand.AddValidator (fun result ->
-        let protocol = result.GetValueForOption protoOption
-
-        if protocol <> UDP then
-            result.ErrorMessage <- "Only UDP protocol is supported."
-    )
-
-    rootCommand.AddValidator (fun result ->
-        let packetLen = result.GetValueForArgument packetLenArgument
-
-        if packetLen.HasValue && packetLen.Value <= 28u then
-            result.ErrorMessage <- "Packet can't be less than 28 bytes."
     )
 
     rootCommand.Invoke args
