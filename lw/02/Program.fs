@@ -94,8 +94,9 @@ let main (args : string[]) : int =
                   PayloadSize = if packetLen.HasValue then int packetLen.Value else 0 }
 
             let probe =
-                match (ctx.ParseResult.GetValueForOption protoOption).ToLower() with
-                | "i" | "icmp"  -> ICMP.probe
+                match (ctx.ParseResult.GetValueForOption protoOption).ToLower () with
+                | "i"
+                | "icmp" -> ICMP.probe
                 | _ -> UDP.probe
 
             Traceroute.trace probe options

@@ -6,7 +6,7 @@ open System.Net
 open System.Net.Sockets
 open System.Diagnostics
 
-let createIcmpPacket (payloadSize: int) (sequence: int) =
+let createIcmpPacket (payloadSize : int) (sequence : int) =
     let id = pid
     let headerSize = 8
     let totalSize = headerSize + payloadSize
@@ -14,25 +14,28 @@ let createIcmpPacket (payloadSize: int) (sequence: int) =
     // Create the initial packet with header values
     let packet =
         [|
-            // Type (8 = Echo Request)
-            8uy
-            // Code (0 for Echo)
-            0uy
-            // Checksum placeholder
-            0uy; 0uy
-            // Identifier
-            byte (id >>> 8); byte id
-            // Sequence number
-            byte (sequence >>> 8); byte sequence
-            // Payload (zeros)
-            yield! [| for _ in 1..payloadSize -> 0uy |]
-        |]
+           // Type (8 = Echo Request)
+           8uy
+           // Code (0 for Echo)
+           0uy
+           // Checksum placeholder
+           0uy
+           0uy
+           // Identifier
+           byte (id >>> 8)
+           byte id
+           // Sequence number
+           byte (sequence >>> 8)
+           byte sequence
+           // Payload (zeros)
+           yield! [| for _ in 1..payloadSize -> 0uy |] |]
 
     // Calculate ICMP checksum
     let mutable checksum = 0us
-    for i in 0..2..totalSize-1 do
+
+    for i in 0..2 .. totalSize - 1 do
         if i + 1 < totalSize then
-            checksum <- checksum + (uint16 packet.[i] <<< 8) + uint16 packet.[i+1]
+            checksum <- checksum + (uint16 packet.[i] <<< 8) + uint16 packet.[i + 1]
         else
             checksum <- checksum + (uint16 packet.[i] <<< 8)
 
@@ -46,13 +49,13 @@ let createIcmpPacket (payloadSize: int) (sequence: int) =
 
     packet
 
-let receiveIcmpResponse (icmpSocket: Socket) (stopwatch: Stopwatch) (allAddresses: IPAddress array) =
+let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
     let buffer = Array.zeroCreate<byte> 1024
-    let endPoint = ref (new IPEndPoint(IPAddress.Any, 0) :> EndPoint)
+    let endPoint = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
-        let bytesReceived = icmpSocket.ReceiveFrom(buffer, endPoint)
-        stopwatch.Stop()
+        let bytesReceived = icmpSocket.ReceiveFrom (buffer, endPoint)
+        stopwatch.Stop ()
 
         let responseAddress =
             match endPoint.Value with
@@ -63,7 +66,8 @@ let receiveIcmpResponse (icmpSocket: Socket) (stopwatch: Stopwatch) (allAddresse
         let icmpType = if bytesReceived >= 20 then int buffer.[20] else -1
         let icmpCode = if bytesReceived >= 21 then int buffer.[21] else -1
 
-        let isTargetHost = Array.exists (fun addr -> addr.Equals(responseAddress)) allAddresses
+        let isTargetHost =
+            Array.exists (fun addr -> addr.Equals (responseAddress)) allAddresses
 
         Some (responseAddress, stopwatch.ElapsedMilliseconds, icmpType, icmpCode, isTargetHost)
     with
@@ -72,19 +76,21 @@ let receiveIcmpResponse (icmpSocket: Socket) (stopwatch: Stopwatch) (allAddresse
         printfn "Socket error: %s" ex.Message
         None
 
-let probe : Probe = fun traceOpts probeOpts  ->
-    use icmpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
-    icmpSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, probeOpts.Ttl)
-    icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
-    icmpSocket.Bind(new IPEndPoint(IPAddress.Any, 0))
+let probe : Probe =
+    fun traceOpts probeOpts ->
+        use icmpSocket =
+            new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
-    let stopwatch = Stopwatch.StartNew()
-    let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) probeOpts.Ttl
+        icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, probeOpts.Ttl)
+        icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
+        icmpSocket.Bind (new IPEndPoint (IPAddress.Any, 0))
 
-    try
-        icmpSocket.SendTo(packet, probeOpts.RemoteEP) |> ignore
-        receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
-    with
-    | ex ->
-        printfn "Error sending ICMP packet: %s" ex.Message
-        None
+        let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) probeOpts.Ttl
+        let stopwatch = Stopwatch.StartNew ()
+
+        try
+            icmpSocket.SendTo (packet, probeOpts.RemoteEP) |> ignore
+            receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
+        with ex ->
+            printfn "Error sending ICMP packet: %s" ex.Message
+            None

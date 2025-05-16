@@ -28,11 +28,10 @@ type TraceOptions =
       IpVersion : IpVersion
       PayloadSize : int }
 
-type ProbeOptions = {
-    LocalEP : IPEndPoint
-    RemoteEP : IPEndPoint
-    Addresses : IPAddress array
-    Ttl : int
-}
+type ProbeOptions =
+    { LocalEP : IPEndPoint
+      RemoteEP : IPEndPoint
+      Addresses : IPAddress array
+      Ttl : int }
 
 type Probe = TraceOptions -> ProbeOptions -> ProbeResult

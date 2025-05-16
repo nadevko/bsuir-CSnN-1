@@ -61,11 +61,13 @@ let trace (probe : Probe) (options : TraceOptions) =
                 printfn "Trace terminated: reached maximum number of hops."
                 ()
 
-            let result = probe options  {
-                 LocalEP = new IPEndPoint(IPAddress.Any, 0)
-                 RemoteEP = new IPEndPoint(targetIp, options.Port + ttl)
-                 Addresses = allAddresses
-                 Ttl = ttl}
+            let result =
+                probe
+                    options
+                    { LocalEP = new IPEndPoint (IPAddress.Any, 0)
+                      RemoteEP = new IPEndPoint (targetIp, options.Port + ttl)
+                      Addresses = allAddresses
+                      Ttl = ttl }
 
             printHopResult ttl result
 

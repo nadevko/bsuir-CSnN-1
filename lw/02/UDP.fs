@@ -2,10 +2,78 @@ module CSnN1.Lw02.UDP
 
 open CSnN1.Lw02.Config
 
+open System.Net
 open System.Net.Sockets
 
+let createUdpPacket
+    (sourcePort : int)
+    (destinationPort : int)
+    (payloadSize : int)
+    (localIP : IPAddress)
+    (remoteIP : IPAddress)
+    =
+    let headerSize = 8
+    let totalSize = headerSize + payloadSize
+
+    let packet =
+        [|
+           // Source port (2 bytes)
+           byte (sourcePort >>> 8)
+           byte sourcePort
+           // Destination port (2 bytes)
+           byte (destinationPort >>> 8)
+           byte destinationPort
+           // Length (2 bytes) - includes header and data
+           byte (totalSize >>> 8)
+           byte totalSize
+           // Checksum (2 bytes) - set to 0 for now
+           0uy
+           0uy
+           // Payload (zeros)
+           yield! [| for _ in 1..payloadSize -> 0uy |] |]
+
+    // Calculate UDP checksum using IPv4 pseudo-header, UDP header, payload
+    let pseudoHeader =
+        [|
+           // Source IP (4 bytes)
+           yield! localIP.GetAddressBytes ()
+           // Destination IP (4 bytes)
+           yield! remoteIP.GetAddressBytes ()
+           // Zero (1 byte)
+           0uy
+           // Protocol (1 byte) - 17 for UDP
+           17uy
+           // UDP Length (2 bytes)
+           byte (totalSize >>> 8)
+           byte totalSize |]
+
+    // Combine pseudo-header and UDP packet for checksum calculation
+    let checksumData = Array.concat [ pseudoHeader ; packet ]
+
+    // Calculate checksum over the combined data
+    let mutable checksum = 0us
+
+    for i in 0..2 .. checksumData.Length - 1 do
+        if i + 1 < checksumData.Length then
+            checksum <- checksum + (uint16 checksumData.[i] <<< 8) + uint16 checksumData.[i + 1]
+        else
+            checksum <- checksum + (uint16 checksumData.[i] <<< 8)
+
+    while checksum >>> 16 > 0us do
+        checksum <- (checksum &&& 0xFFFFus) + (checksum >>> 16)
+
+    checksum <- ~~~checksum
+
+    // If checksum is zero, use all ones (0xFFFF)
+    checksum <- if checksum = 0us then 0xFFFFus else checksum
+
+    packet.[6] <- byte (checksum >>> 8)
+    packet.[7] <- byte checksum
+
+    packet
+
 let probe : Probe =
-    fun traceOpts probeOpts  ->
+    fun traceOpts probeOpts ->
 
         use icmpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
@@ -13,15 +81,24 @@ let probe : Probe =
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
-        use udpClient = new UdpClient ()
-        udpClient.Client.SendTimeout <- traceOpts.SendTimeout
-        udpClient.Ttl <- int16  probeOpts.Ttl
+        use udpSocket =
+            new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+
+        udpSocket.SendTimeout <- traceOpts.SendTimeout
+        udpSocket.Ttl <- int16 probeOpts.Ttl
+
+        let packet =
+            createUdpPacket
+                traceOpts.Port
+                (traceOpts.Port + probeOpts.Ttl)
+                traceOpts.PayloadSize
+                probeOpts.LocalEP.Address
+                probeOpts.RemoteEP.Address
 
         let stopwatch = System.Diagnostics.Stopwatch.StartNew ()
-        let packet = Array.zeroCreate<byte> traceOpts.PayloadSize
 
         try
-            udpClient.Send (packet, traceOpts.PayloadSize, probeOpts.RemoteEP) |> ignore
+            udpSocket.SendTo (packet, probeOpts.RemoteEP) |> ignore
 
             ICMP.receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
         with ex ->
