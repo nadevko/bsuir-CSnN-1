@@ -68,14 +68,14 @@ let main (args : string[]) : int =
     let hostArgument = new Argument<string> ("host", "The host to traceroute to")
     rootCommand.AddArgument hostArgument
 
-    let payloadSizeArgument =
-        new Argument<Nullable<uint>> ("payloadsize", "The payload length in bytes")
+    let packetSizeArgument =
+        new Argument<Nullable<uint>> ("packetsize", "The payload length in bytes")
 
-    payloadSizeArgument.SetDefaultValue (Nullable<uint> ())
-    rootCommand.AddArgument payloadSizeArgument
+    packetSizeArgument.SetDefaultValue (Nullable<uint> 28u)
+    rootCommand.AddArgument packetSizeArgument
 
     rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
-        let packetLen = ctx.ParseResult.GetValueForArgument payloadSizeArgument
+        let packetLen = ctx.ParseResult.GetValueForArgument packetSizeArgument
 
         try
             let options =
@@ -91,7 +91,7 @@ let main (args : string[]) : int =
                     if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
                     elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
                     else Any
-                  PayloadSize = if packetLen.HasValue then int packetLen.Value else 0 }
+                  PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0 }
 
             let probe =
                 match (ctx.ParseResult.GetValueForOption protoOption).ToLower () with
@@ -142,6 +142,13 @@ let main (args : string[]) : int =
 
         if ipv4 && ipv6 then
             result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
+    )
+
+    rootCommand.AddValidator (fun result ->
+        let packetSize = result.GetValueForArgument packetSizeArgument
+
+        if packetSize.HasValue && packetSize.Value < 28u then
+            result.ErrorMessage <- "Packet size must be at least 28 bytes."
     )
 
     rootCommand.Invoke args
