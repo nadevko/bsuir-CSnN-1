@@ -78,19 +78,25 @@ let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddres
 
 let probe : Probe =
     fun traceOpts probeOpts ->
-        use icmpSocket =
+        let icmpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
-        icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, probeOpts.Ttl)
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
-        icmpSocket.Bind (new IPEndPoint (IPAddress.Any, 0))
+        icmpSocket.Bind probeOpts.LocalEP
 
-        let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) probeOpts.Ttl
-        let stopwatch = Stopwatch.StartNew ()
+        let run ttl =
+            let RemoteEP = probeOpts.RemoteEP ttl
+            icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl)
+            let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) ttl
+            let stopwatch = Stopwatch.StartNew ()
 
-        try
-            icmpSocket.SendTo (packet, probeOpts.RemoteEP) |> ignore
-            receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
-        with ex ->
-            printfn "Error sending ICMP packet: %s" ex.Message
-            None
+            try
+                icmpSocket.SendTo (packet, RemoteEP) |> ignore
+                receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
+            with ex ->
+                printfn "Error sending ICMP packet: %s" ex.Message
+                None
+
+        let dispose () = icmpSocket.Dispose ()
+
+        run, dispose

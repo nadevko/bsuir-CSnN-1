@@ -75,32 +75,40 @@ let createUdpPacket
 let probe : Probe =
     fun traceOpts probeOpts ->
 
-        use icmpSocket =
+        let icmpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
-        use udpSocket =
+        let udpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
 
         udpSocket.SendTimeout <- traceOpts.SendTimeout
-        udpSocket.Ttl <- int16 probeOpts.Ttl
 
-        let packet =
-            createUdpPacket
-                traceOpts.Port
-                (traceOpts.Port + probeOpts.Ttl)
-                traceOpts.PayloadSize
-                probeOpts.LocalEP.Address
-                probeOpts.RemoteEP.Address
+        let run ttl =
+            udpSocket.Ttl <- int16 ttl
+            let RemoteEP = probeOpts.RemoteEP ttl
 
-        let stopwatch = System.Diagnostics.Stopwatch.StartNew ()
+            let packet =
+                createUdpPacket
+                    traceOpts.Port
+                    (traceOpts.Port + ttl)
+                    traceOpts.PayloadSize
+                    probeOpts.LocalEP.Address
+                    RemoteEP.Address
 
-        try
-            udpSocket.SendTo (packet, probeOpts.RemoteEP) |> ignore
+            let stopwatch = System.Diagnostics.Stopwatch.StartNew ()
 
-            ICMP.receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
-        with ex ->
-            printfn "Error sending UDP packet: %s" ex.Message
-            None
+            try
+                udpSocket.SendTo (packet, RemoteEP) |> ignore
+                ICMP.receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
+            with ex ->
+                printfn "Error sending UDP packet: %s" ex.Message
+                None
+
+        let dispose () =
+            icmpSocket.Dispose ()
+            udpSocket.Dispose ()
+
+        run, dispose

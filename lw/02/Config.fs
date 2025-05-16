@@ -30,8 +30,7 @@ type TraceOptions =
 
 type ProbeOptions =
     { LocalEP : IPEndPoint
-      RemoteEP : IPEndPoint
-      Addresses : IPAddress array
-      Ttl : int }
+      RemoteEP : int -> IPEndPoint
+      Addresses : IPAddress array }
 
-type Probe = TraceOptions -> ProbeOptions -> ProbeResult
+type Probe = TraceOptions -> ProbeOptions -> (int -> ProbeResult) * (unit -> unit)

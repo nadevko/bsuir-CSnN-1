@@ -43,31 +43,31 @@ let trace (probe : Probe) (options : TraceOptions) =
         printf "%*d  " nSpace ttl
 
         match result with
-        | Some (addr, elapsed, icmpType, icmpCode, isTarget) -> printfn "%s  %dms" (addr.ToString ()) (int elapsed)
+        | Some (addr, elapsed, _, _, _) -> printfn "%s  %dms" (addr.ToString ()) (int elapsed)
         | None -> printfn "*     Request timed out."
 
     try
         let allAddresses, targetIp = resolveHostname options.Hostname options.IpVersion
 
         printfn
-            "traceroute to %s (%s), %i hops max, %i byte packets"
+            "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
             options.Hostname
             (targetIp.ToString ())
             options.MaxTTL
             options.PayloadSize
 
+        let probe', dispose =
+            probe
+                options
+                { LocalEP = new IPEndPoint (IPAddress.Any, 0)
+                  RemoteEP = fun ttl -> new IPEndPoint (targetIp, options.Port + ttl)
+                  Addresses = allAddresses }
+
         let rec traceHop ttl =
             if ttl > options.MaxTTL then
-                printfn "Trace terminated: reached maximum number of hops."
-                ()
+                failwith "Max TTL reached"
 
-            let result =
-                probe
-                    options
-                    { LocalEP = new IPEndPoint (IPAddress.Any, 0)
-                      RemoteEP = new IPEndPoint (targetIp, options.Port + ttl)
-                      Addresses = allAddresses
-                      Ttl = ttl }
+            let result = probe' ttl
 
             printHopResult ttl result
 
@@ -75,6 +75,8 @@ let trace (probe : Probe) (options : TraceOptions) =
                 traceHop (ttl + 1)
 
         traceHop options.FirstTTL
+
+        dispose ()
 
     with ex ->
         printfn "Error: %s" ex.Message
