@@ -43,8 +43,13 @@ let trace (probe : Probe) (options : TraceOptions) =
         printf "%*d  " nSpace ttl
 
         match result with
-        | Some (addr, elapsed, _, _, _) -> printfn "%s  %dms" (addr.ToString ()) (int elapsed)
-        | None -> printfn "*     Request timed out."
+        | Some (addr, elapsed, _, _, _) ->
+            try
+                let hostEntry = Dns.GetHostEntry addr
+                printfn "%s  (%s)  %dms" hostEntry.HostName (addr.ToString ()) (int elapsed)
+            with _ ->
+                printfn "%s  %dms" (addr.ToString ()) (int elapsed)
+        | None -> printfn "*"
 
     try
         let allAddresses, targetIp = resolveHostname options.Hostname options.IpVersion

@@ -9,10 +9,13 @@ open System.CommandLine
 let main (args : string[]) : int =
     let rootCommand = new RootCommand "F# implementation of traceroute utility"
 
-    let protoOption = new Option<string> ("--proto", "Set the protocol to use.")
-    protoOption.AddAlias "-P"
-    protoOption.SetDefaultValue "UDP"
-    rootCommand.AddOption protoOption
+    let icmpOption = new Option<bool> ("--icmp", "Set the ICMP protocol to use.")
+    icmpOption.AddAlias "-I"
+    rootCommand.AddOption icmpOption
+
+    let udpOption = new Option<bool> ("--udp", "Set the UDP protocol to use (default).")
+    udpOption.AddAlias "-U"
+    rootCommand.AddOption udpOption
 
     let ipv4Option = new Option<bool> ("--ipv4", "Use IPv4")
     ipv4Option.AddAlias "-4"
@@ -93,11 +96,7 @@ let main (args : string[]) : int =
                     else Any
                   PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0 }
 
-            let probe =
-                match (ctx.ParseResult.GetValueForOption protoOption).ToLower () with
-                | "i"
-                | "icmp" -> ICMP.probe
-                | _ -> UDP.probe
+            let probe = if ctx.ParseResult.GetValueForOption icmpOption && not (ctx.ParseResult.GetValueForOption udpOption) then ICMP.probe else UDP.probe
 
             Traceroute.trace probe options
             ctx.ExitCode <- 0
@@ -149,6 +148,14 @@ let main (args : string[]) : int =
 
         if packetSize.HasValue && packetSize.Value < 28u then
             result.ErrorMessage <- "Packet size must be at least 28 bytes."
+    )
+
+    rootCommand.AddValidator (fun result ->
+        let icmp = result.GetValueForOption icmpOption
+        let udp = result.GetValueForOption udpOption
+
+        if icmp && udp then
+            result.ErrorMessage <- "Cannot use both ICMP or UDP protocols at the same time."
     )
 
     rootCommand.Invoke args
