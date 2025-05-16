@@ -64,7 +64,7 @@ let trace (probe : Probe) (options : TraceOptions) =
         let probe', dispose =
             probe
                 options
-                { LocalEP = new IPEndPoint (IPAddress.Any, 0)
+                { LocalEP = new IPEndPoint (options.interfaceIP, 0)
                   RemoteEP = fun ttl -> new IPEndPoint (targetIp, options.Port + ttl)
                   Addresses = allAddresses }
 

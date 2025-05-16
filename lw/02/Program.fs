@@ -4,6 +4,33 @@ open CSnN1.Lw02.Config
 
 open System
 open System.CommandLine
+open System.Net
+open System.Net.NetworkInformation
+open System.Collections.Generic
+
+let rec checkIPVersion (ipVersion : IpVersion) (ipAddress : IPAddress) =
+    match ipVersion with
+    | Any -> checkIPVersion IPv4 ipAddress || checkIPVersion IPv6 ipAddress
+    | IPv4 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork
+    | IPv6 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6
+
+let getNetworkInterfaces () =
+    let interfaces = new Dictionary<string, IPAddress> ()
+
+    try
+        NetworkInterface.GetAllNetworkInterfaces ()
+        |> Array.filter (fun netInterface -> netInterface.OperationalStatus = OperationalStatus.Up)
+        |> Array.iter (fun netInterface ->
+            let properties = netInterface.GetIPProperties ()
+
+            properties.UnicastAddresses
+            |> Seq.filter (fun unicast -> checkIPVersion Any unicast.Address)
+            |> Seq.iter (fun unicast -> interfaces[netInterface.Name] <- unicast.Address)
+        )
+    with ex ->
+        printfn "Error getting network interfaces: %s" ex.Message
+
+    interfaces
 
 [<EntryPoint>]
 let main (args : string[]) : int =
@@ -77,10 +104,25 @@ let main (args : string[]) : int =
     packetSizeArgument.SetDefaultValue (Nullable<uint> 28u)
     rootCommand.AddArgument packetSizeArgument
 
+    let interfaceOption =
+        new Option<string> ("--interface", "Set the network interface to use for sending packets")
+
+    interfaceOption.AddAlias "-i"
+    rootCommand.AddOption interfaceOption
+
+    let interfaces = getNetworkInterfaces ()
+
     rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
         let packetLen = ctx.ParseResult.GetValueForArgument packetSizeArgument
 
         try
+            let interfaceIP = ctx.ParseResult.GetValueForOption interfaceOption
+
+            let IpVersion =
+                if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
+                elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
+                else Any
+
             let options =
                 { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
                   Port = int (ctx.ParseResult.GetValueForOption portOption)
@@ -90,19 +132,40 @@ let main (args : string[]) : int =
                   FirstTTL = int (ctx.ParseResult.GetValueForOption firstTtlOption)
                   Queries = ctx.ParseResult.GetValueForOption queriesOption
                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
-                  IpVersion =
-                    if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
-                    elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
-                    else Any
-                  PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0 }
+                  IpVersion = IpVersion
+                  PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0
+                  interfaceIP =
+                    if String.IsNullOrEmpty interfaceIP then
+                        IPAddress.Any
+                    else
+                        interfaces.[interfaceIP] }
 
-            let probe = if ctx.ParseResult.GetValueForOption icmpOption && not (ctx.ParseResult.GetValueForOption udpOption) then ICMP.probe else UDP.probe
+            let probe =
+                if
+                    ctx.ParseResult.GetValueForOption icmpOption
+                    && not (ctx.ParseResult.GetValueForOption udpOption)
+                then
+                    ICMP.probe
+                else
+                    UDP.probe
 
             Traceroute.trace probe options
             ctx.ExitCode <- 0
         with ex ->
             printfn "Error: %s" ex.Message
             ctx.ExitCode <- 1
+    )
+
+    rootCommand.AddValidator (fun result ->
+        let selectedInterface = result.GetValueForOption interfaceOption
+
+        if not (String.IsNullOrEmpty selectedInterface) then
+            if not (interfaces.ContainsKey selectedInterface) then
+                result.ErrorMessage <-
+                    sprintf
+                        "Specified interface '%s' not found. Valid interfaces: %s"
+                        selectedInterface
+                        (String.Join (", ", interfaces.Keys))
     )
 
     rootCommand.AddValidator (fun result ->

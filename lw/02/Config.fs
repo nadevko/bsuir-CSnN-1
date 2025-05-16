@@ -26,7 +26,8 @@ type TraceOptions =
       Queries : uint
       ResolveNames : bool
       IpVersion : IpVersion
-      PayloadSize : int }
+      PayloadSize : int
+      interfaceIP : IPAddress }
 
 type ProbeOptions =
     { LocalEP : IPEndPoint
