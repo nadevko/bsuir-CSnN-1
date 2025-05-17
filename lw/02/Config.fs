@@ -11,7 +11,7 @@ type Protocol =
     | ICMP
     | UDP
 
-type ProbeResult = IPAddress * int64 * bool
+type ProbeResult = int * IPAddress * int64 * bool
 
 type TraceOptions =
     { Hostname : string

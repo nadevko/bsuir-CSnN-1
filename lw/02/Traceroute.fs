@@ -54,7 +54,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
         printf "%*d  " padding ttl
 
         match result with
-        | Some (addr, elapsed, _) ->
+        | Some (_, addr, elapsed, _) ->
             try
                 let hostEntry = Dns.GetHostEntry addr
                 printfn "%s  (%s)  %dms" hostEntry.HostName (addr.ToString ()) (int elapsed)
@@ -69,7 +69,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
         let shouldStop =
             match result with
-            | Some (_, _, isSuccess) -> isSuccess
+            | Some (_, _, _, isSuccess) -> isSuccess
             | None -> ttl >= options.MaxTTL
 
         if not shouldStop && ttl < options.MaxTTL then

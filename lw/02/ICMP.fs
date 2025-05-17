@@ -50,33 +50,28 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
 
     packet
 
-let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
-    let buffer = Array.zeroCreate<byte> 8
-    let endPoint = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
+let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
+    let buffer = Array.zeroCreate<byte> (8 + payload)
+    let remoteEP = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
-        let bytesReceived = icmpSocket.ReceiveFrom (buffer, endPoint)
-        stopwatch.Stop ()
+        let receiveBuffer = icmpSocket.ReceiveFrom (buffer, remoteEP)
+        stopwatch.Stop()
 
-        let responseAddress =
-            match endPoint.Value with
-            | :? IPEndPoint as ipEndPoint -> ipEndPoint.Address
+        let receiveAddress =
+            match remoteEP.Value with
+            | :? IPEndPoint as ep -> ep.Address
             | _ -> IPAddress.None
 
-        // ICMP headers start at offset 20 (after IP header)
-        let icmpType = if bytesReceived >= 20 then int buffer.[20] else -1
-        let icmpCode = if bytesReceived >= 21 then int buffer.[21] else -1
+        let icmpType = if receiveBuffer >= 20 then int buffer.[20] else -1
+        let icmpCode = if receiveBuffer >= 21 then int buffer.[21] else -1
 
         let isSuccess =
             icmpType = 0 && icmpCode = 0 || // Echo Reply
-            Array.exists (fun addr -> addr.Equals responseAddress) allAddresses
-
-        Some (responseAddress, stopwatch.ElapsedMilliseconds, isSuccess)
+            Array.exists (fun addr -> addr.Equals receiveAddress) allAddresses
+        Some (receiveAddress, stopwatch.ElapsedMilliseconds, isSuccess, buffer)
     with
-    | :? SocketException as ex when ex.SocketErrorCode = SocketError.TimedOut -> None
-    | ex ->
-        printfn "Socket error: %s" ex.Message
-        None
+    | _ -> None
 
 let probe : ProbeFactory =
     fun traceOpts probeOpts ->
@@ -100,11 +95,11 @@ let probe : ProbeFactory =
                 printfn "Error sending ICMP packet: %s" ex.Message
 
         let receive () =
-            try
-                receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
-            with ex ->
-                printfn "Error receiving ICMP response: %s" ex.Message
-                None
+            match receiveResponse icmpSocket traceOpts.PayloadSize stopwatch probeOpts.Addresses with
+            | Some (receiveAddress, elapsed, isSuccess, receiveBuffer) ->
+                let sequence = int receiveBuffer.[26] <<< 8 ||| int receiveBuffer.[27]
+                Some (sequence, receiveAddress, stopwatch.ElapsedMilliseconds, isSuccess)
+            | _ -> None
 
         let dispose () = icmpSocket.Dispose()
 
