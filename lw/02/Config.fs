@@ -11,7 +11,11 @@ type Protocol =
     | ICMP
     | UDP
 
-type ProbeResult = int * IPAddress * int64 * bool
+type ProbeResult =
+    { ttl : int
+      ip : IPAddress
+      ms : int64
+      isSuccess : bool }
 
 type TraceOptions =
     { Hostname : string
@@ -25,7 +29,7 @@ type TraceOptions =
       IpVersion : IpVersion
       PayloadSize : int
       interfaceIP : IPAddress
-      Jobs : int }
+      Jobs : uint }
 
 type ProbeOptions =
     { LocalEP : IPEndPoint

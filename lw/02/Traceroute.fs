@@ -4,8 +4,11 @@ open CSnN1.Lw02.Config
 open System
 open System.Net
 open System.Net.Sockets
+open System.Threading
 
 type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
+    let padding = options.MaxTTL.ToString().Length
+
     let addresses, remoteIP =
         let resolveHostname (hostname : string) (ipVersion : IpVersion) =
             let hostEntry = Dns.GetHostEntry hostname
@@ -48,32 +51,32 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
               RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
               Addresses = addresses }
 
-    let padding = options.MaxTTL.ToString().Length
+    let completionEvent = new ManualResetEvent (false)
 
-    member private _.PrintHopResult (ttl : int) (result : ProbeResult option) =
-        printf "%*d  " padding ttl
+    let printLock = new Object ()
 
-        match result with
-        | Some (_, addr, elapsed, _) ->
-            try
-                let hostEntry = Dns.GetHostEntry addr
-                printfn "%s  (%s)  %dms" hostEntry.HostName (addr.ToString ()) (int elapsed)
-            with _ ->
-                printfn "%s  %dms" (addr.ToString ()) (int elapsed)
-        | None -> printfn "*"
+    member private _.SendAsync (ttl : int) =
+        async {
+            Send ttl
+            let result = Receive ()
 
-    member private this.Hop (ttl : int) =
-        Send ttl
-        let result = Receive()
-        this.PrintHopResult ttl result
+            lock
+                printLock
+                (fun () ->
+                    match result with
+                    | Some result' ->
+                        try
+                            let hostEntry = Dns.GetHostEntry result'.ip
+                            printfn "%*d  (%s)  %dms" padding ttl hostEntry.HostName (int result'.ms)
+                        with _ ->
+                            printfn "%*d  %s  %dms" padding ttl (result'.ip.ToString ()) (int result'.ms)
+                    | None -> printfn "%*d  *" padding ttl
 
-        let shouldStop =
-            match result with
-            | Some (_, _, _, isSuccess) -> isSuccess
-            | None -> ttl >= options.MaxTTL
-
-        if not shouldStop && ttl < options.MaxTTL then
-            this.Hop (ttl + 1)
+                    if ttl >= options.MaxTTL then
+                        completionEvent.Set () |> ignore
+                )
+        }
+        |> Async.Start
 
     member this.Start () =
         try
@@ -84,8 +87,22 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 options.MaxTTL
                 options.PayloadSize
 
-            if options.FirstTTL <= options.MaxTTL then
-                this.Hop options.FirstTTL
+            let rec sendAll ttl remainingQueries =
+                if ttl <= options.MaxTTL then
+                    let batchSize = min options.Jobs remainingQueries
+
+                    for _ in 1u .. batchSize do
+                        this.SendAsync ttl
+
+                    if remainingQueries > batchSize then
+                        sendAll ttl (remainingQueries - batchSize)
+                    else
+                        Thread.Sleep options.SendTimeout
+                        sendAll (ttl + 1) options.Queries
+
+            sendAll options.FirstTTL options.Queries
+
+            completionEvent.WaitOne () |> ignore
 
         with ex ->
             printfn "Error: %s" ex.Message

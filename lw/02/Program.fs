@@ -137,7 +137,7 @@ let main (args : string[]) : int =
                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
                   MaxTTL = int (ctx.ParseResult.GetValueForOption maxHopsOption)
                   FirstTTL = int (ctx.ParseResult.GetValueForOption firstTtlOption)
-                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption)
+                  Jobs = ctx.ParseResult.GetValueForOption queriesOption
                   Queries = ctx.ParseResult.GetValueForOption queriesOption
                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
                   IpVersion = IpVersion
@@ -167,7 +167,7 @@ let main (args : string[]) : int =
 
     rootCommand.AddValidator (fun result ->
         let selectedInterface = result.GetValueForOption interfaceOption
-        let interfaces= getNetworkInterfaces Any
+        let interfaces = getNetworkInterfaces Any
 
         if not (String.IsNullOrEmpty selectedInterface) then
             if not (interfaces.ContainsKey selectedInterface) then

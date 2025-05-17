@@ -56,7 +56,7 @@ let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch
 
     try
         let receiveBuffer = icmpSocket.ReceiveFrom (buffer, remoteEP)
-        stopwatch.Stop()
+        stopwatch.Stop ()
 
         let receiveAddress =
             match remoteEP.Value with
@@ -67,11 +67,13 @@ let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch
         let icmpCode = if receiveBuffer >= 21 then int buffer.[21] else -1
 
         let isSuccess =
-            icmpType = 0 && icmpCode = 0 || // Echo Reply
+            icmpType = 0 && icmpCode = 0
+            || // Echo Reply
             Array.exists (fun addr -> addr.Equals receiveAddress) allAddresses
+
         Some (receiveAddress, stopwatch.ElapsedMilliseconds, isSuccess, buffer)
-    with
-    | _ -> None
+    with _ ->
+        None
 
 let probe : ProbeFactory =
     fun traceOpts probeOpts ->
@@ -81,13 +83,13 @@ let probe : ProbeFactory =
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
-        let mutable stopwatch = Stopwatch()
+        let mutable stopwatch = Stopwatch ()
 
         let send ttl =
             let RemoteEP = probeOpts.RemoteEP ttl
             icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl)
             let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) ttl
-            stopwatch.Start()
+            stopwatch.Start ()
 
             try
                 icmpSocket.SendTo (packet, RemoteEP) |> ignore
@@ -97,10 +99,13 @@ let probe : ProbeFactory =
         let receive () =
             match receiveResponse icmpSocket traceOpts.PayloadSize stopwatch probeOpts.Addresses with
             | Some (receiveAddress, elapsed, isSuccess, receiveBuffer) ->
-                let sequence = int receiveBuffer.[26] <<< 8 ||| int receiveBuffer.[27]
-                Some (sequence, receiveAddress, stopwatch.ElapsedMilliseconds, isSuccess)
+                Some
+                    { ttl = int receiveBuffer.[26] <<< 8 ||| int receiveBuffer.[27]
+                      ip = receiveAddress
+                      ms = elapsed
+                      isSuccess = isSuccess }
             | _ -> None
 
-        let dispose () = icmpSocket.Dispose()
+        let dispose () = icmpSocket.Dispose ()
 
         send, receive, dispose

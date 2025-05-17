@@ -86,7 +86,7 @@ let probe : ProbeFactory =
 
         udpSocket.SendTimeout <- traceOpts.SendTimeout
         udpSocket.Bind probeOpts.LocalEP
-        let mutable stopwatch = System.Diagnostics.Stopwatch()
+        let mutable stopwatch = System.Diagnostics.Stopwatch ()
 
         let send ttl =
             udpSocket.Ttl <- int16 ttl
@@ -100,7 +100,7 @@ let probe : ProbeFactory =
                     probeOpts.LocalEP.Address
                     RemoteEP.Address
 
-            stopwatch.Start()
+            stopwatch.Start ()
 
             try
                 udpSocket.SendTo (packet, RemoteEP) |> ignore
@@ -110,13 +110,15 @@ let probe : ProbeFactory =
         let receive () =
             match ICMP.receiveResponse icmpSocket 22 stopwatch probeOpts.Addresses with
             | Some (receiveAddress, elapsed, isSuccess, buffer) ->
-                let destinationPort = int buffer.[48] <<< 8 ||| int buffer.[49]
-
-                Some (destinationPort - traceOpts.Port, receiveAddress, elapsed, isSuccess)
+                Some
+                    { ttl = int buffer.[48] <<< 8 ||| int buffer.[49]
+                      ip = receiveAddress
+                      ms = elapsed
+                      isSuccess = isSuccess }
             | None -> None
 
         let dispose () =
-            icmpSocket.Dispose()
-            udpSocket.Dispose()
+            icmpSocket.Dispose ()
+            udpSocket.Dispose ()
 
         send, receive, dispose
