@@ -76,7 +76,7 @@ let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddres
         printfn "Socket error: %s" ex.Message
         None
 
-let probe : Probe =
+let probe : ProbeFactory =
     fun traceOpts probeOpts ->
         let icmpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)

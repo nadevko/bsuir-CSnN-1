@@ -7,6 +7,7 @@ open System.CommandLine
 open System.Net
 open System.Net.NetworkInformation
 open System.Collections.Generic
+open Traceroute
 
 let rec checkIPVersion (ipVersion : IpVersion) (ipAddress : IPAddress) =
     match ipVersion with
@@ -146,7 +147,7 @@ let main (args : string[]) : int =
                     else
                         interfaces.[interfaceIP] }
 
-            let probe =
+            let probeFactory =
                 if
                     ctx.ParseResult.GetValueForOption icmpOption
                     && not (ctx.ParseResult.GetValueForOption udpOption)
@@ -155,7 +156,8 @@ let main (args : string[]) : int =
                 else
                     UDP.probe
 
-            Traceroute.trace probe options
+            use traceroute = new Traceroute (probeFactory, options)
+            traceroute.Start ()
             ctx.ExitCode <- 0
         with ex ->
             printfn "Error: %s" ex.Message

@@ -72,7 +72,7 @@ let createUdpPacket
 
     packet
 
-let probe : Probe =
+let probe : ProbeFactory =
     fun traceOpts probeOpts ->
 
         let icmpSocket =

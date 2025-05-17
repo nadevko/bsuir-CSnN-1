@@ -1,50 +1,57 @@
 module CSnN1.Lw02.Traceroute
 
 open CSnN1.Lw02.Config
-
+open System
 open System.Net
 open System.Net.Sockets
 
-let resolveHostname (hostname : string) (ipVersion : IpVersion) =
-    let hostEntry = Dns.GetHostEntry hostname
-    let addresses = hostEntry.AddressList
+type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
+    let addresses, remoteIP =
+        let resolveHostname (hostname : string) (ipVersion : IpVersion) =
+            let hostEntry = Dns.GetHostEntry hostname
+            let addresses = hostEntry.AddressList
 
-    if addresses.Length = 0 then
-        raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
+            if addresses.Length = 0 then
+                raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
 
-    let selectedIp =
-        match
-            addresses
-            |> Array.tryFind (fun ip -> ip.ToString () = hostname)
-            |> Option.orElse (
-                addresses
-                |> Array.tryFind (fun ip ->
-                    match ipVersion with
-                    | Any -> true
-                    | IPv4 when ip.AddressFamily = AddressFamily.InterNetwork -> true
-                    | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
-                    | _ -> false
-                )
-            )
-        with
-        | Some ip -> ip
-        | None ->
-            raise (
-                WebException (sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname)
-            )
+            let ip =
+                match
+                    addresses
+                    |> Array.tryFind (fun ip -> ip.ToString () = hostname)
+                    |> Option.orElse (
+                        addresses
+                        |> Array.tryFind (fun ip ->
+                            match ipVersion with
+                            | Any -> true
+                            | IPv4 when ip.AddressFamily = AddressFamily.InterNetwork -> true
+                            | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
+                            | _ -> false
+                        )
+                    )
+                with
+                | Some ip -> ip
+                | None ->
+                    raise (
+                        WebException (
+                            sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname
+                        )
+                    )
 
-    addresses, selectedIp
+            addresses, ip
 
-let trace (probe : Probe) (options : TraceOptions) =
-    let nSpace = options.MaxTTL.ToString().Length
+        resolveHostname options.Hostname options.IpVersion
 
-    let mustEndTrace (result : ProbeResult) (ttl : int) =
-        match result with
-        | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
-        | None -> ttl > options.MaxTTL
+    let Probe, Dispose =
+        probeFactory
+            options
+            { LocalEP = new IPEndPoint (options.interfaceIP, 0)
+              RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
+              Addresses = addresses }
 
-    let printHopResult (ttl : int) (result : ProbeResult) =
-        printf "%*d  " nSpace ttl
+    let padding = options.MaxTTL.ToString().Length
+
+    member private _.PrintHopResult (ttl : int) (result : ProbeResult) =
+        printf "%*d  " padding ttl
 
         match result with
         | Some (addr, elapsed, _, _, _) ->
@@ -55,35 +62,32 @@ let trace (probe : Probe) (options : TraceOptions) =
                 printfn "%s  %dms" (addr.ToString ()) (int elapsed)
         | None -> printfn "*"
 
-    try
-        let allAddresses, targetIp = resolveHostname options.Hostname options.IpVersion
+    member private this.Hop (ttl : int) =
+        let result = Probe ttl
+        this.PrintHopResult ttl result
 
-        printfn
-            "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
-            options.Hostname
-            (targetIp.ToString ())
-            options.MaxTTL
-            options.PayloadSize
+        let shouldStop =
+            match result with
+            | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
+            | None -> ttl >= options.MaxTTL
 
-        let probe', dispose =
-            probe
-                options
-                { LocalEP = new IPEndPoint (options.interfaceIP, 0)
-                  RemoteEP = fun ttl -> new IPEndPoint (targetIp, options.Port + ttl)
-                  Addresses = allAddresses }
+        if not shouldStop && ttl < options.MaxTTL then
+            this.Hop (ttl + 1)
 
-        let rec traceHop ttl =
-            let result = probe' ttl
+    member this.Start () =
+        try
+            printfn
+                "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
+                options.Hostname
+                (remoteIP.ToString ())
+                options.MaxTTL
+                options.PayloadSize
 
-            printHopResult ttl result
+            if options.FirstTTL <= options.MaxTTL then
+                this.Hop options.FirstTTL
 
-            if not (mustEndTrace result ttl) then
-                traceHop (ttl + 1)
+        with ex ->
+            printfn "Error: %s" ex.Message
 
-        if options.FirstTTL <= options.MaxTTL then
-            traceHop options.FirstTTL
-
-        dispose ()
-
-    with ex ->
-        printfn "Error: %s" ex.Message
+    interface IDisposable with
+        member _.Dispose () = Dispose ()

@@ -35,4 +35,4 @@ type ProbeOptions =
       RemoteEP : int -> IPEndPoint
       Addresses : IPAddress array }
 
-type Probe = TraceOptions -> ProbeOptions -> (int -> ProbeResult) * (unit -> unit)
+type ProbeFactory = TraceOptions -> ProbeOptions -> (int -> ProbeResult) * (unit -> unit)
