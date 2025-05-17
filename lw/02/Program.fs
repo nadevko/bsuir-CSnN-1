@@ -15,7 +15,7 @@ let rec checkIPVersion (ipVersion : IpVersion) (ipAddress : IPAddress) =
     | IPv4 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork
     | IPv6 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6
 
-let getNetworkInterfaces () =
+let getNetworkInterfaces (ipVersion : IpVersion) =
     let interfaces = new Dictionary<string, IPAddress> ()
 
     try
@@ -25,7 +25,7 @@ let getNetworkInterfaces () =
             let properties = netInterface.GetIPProperties ()
 
             properties.UnicastAddresses
-            |> Seq.filter (fun unicast -> checkIPVersion Any unicast.Address)
+            |> Seq.filter (fun unicast -> checkIPVersion ipVersion unicast.Address)
             |> Seq.iter (fun unicast -> interfaces[netInterface.Name] <- unicast.Address)
         )
     with ex ->
@@ -116,7 +116,6 @@ let main (args : string[]) : int =
     interfaceOption.AddAlias "-i"
     rootCommand.AddOption interfaceOption
 
-    let interfaces = getNetworkInterfaces ()
 
     rootCommand.SetHandler (fun (ctx : Invocation.InvocationContext) ->
         let packetLen = ctx.ParseResult.GetValueForArgument packetSizeArgument
@@ -128,6 +127,8 @@ let main (args : string[]) : int =
                 if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
                 elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
                 else Any
+
+            let interfaces = getNetworkInterfaces IpVersion
 
             let options =
                 { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
@@ -166,6 +167,7 @@ let main (args : string[]) : int =
 
     rootCommand.AddValidator (fun result ->
         let selectedInterface = result.GetValueForOption interfaceOption
+        let interfaces= getNetworkInterfaces Any
 
         if not (String.IsNullOrEmpty selectedInterface) then
             if not (interfaces.ContainsKey selectedInterface) then
