@@ -51,7 +51,7 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
     packet
 
 let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
-    let buffer = Array.zeroCreate<byte> (8 + payload)
+    let buffer = Array.zeroCreate<byte> (28 + payload)
     let remoteEP = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
