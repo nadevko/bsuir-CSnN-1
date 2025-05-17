@@ -6,8 +6,9 @@ open System.Net
 open System.Net.Sockets
 open System.Diagnostics
 
+let pid = Process.GetCurrentProcess().Id
+
 let createIcmpPacket (payloadSize : int) (sequence : int) =
-    let id = pid
     let headerSize = 8
     let totalSize = headerSize + payloadSize
 
@@ -22,8 +23,8 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
            0uy
            0uy
            // Identifier
-           byte (id >>> 8)
-           byte id
+           byte (pid >>> 8)
+           byte pid
            // Sequence number
            byte (sequence >>> 8)
            byte sequence
@@ -50,7 +51,7 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
     packet
 
 let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
-    let buffer = Array.zeroCreate<byte> 1024
+    let buffer = Array.zeroCreate<byte> 8
     let endPoint = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
@@ -66,10 +67,11 @@ let receiveIcmpResponse (icmpSocket : Socket) (stopwatch : Stopwatch) (allAddres
         let icmpType = if bytesReceived >= 20 then int buffer.[20] else -1
         let icmpCode = if bytesReceived >= 21 then int buffer.[21] else -1
 
-        let isTargetHost =
-            Array.exists (fun addr -> addr.Equals (responseAddress)) allAddresses
+        let isSuccess =
+            icmpType = 0 && icmpCode = 0 || // Echo Reply
+            Array.exists (fun addr -> addr.Equals responseAddress) allAddresses
 
-        Some (responseAddress, stopwatch.ElapsedMilliseconds, icmpType, icmpCode, isTargetHost)
+        Some (responseAddress, stopwatch.ElapsedMilliseconds, isSuccess)
     with
     | :? SocketException as ex when ex.SocketErrorCode = SocketError.TimedOut -> None
     | ex ->
@@ -84,19 +86,26 @@ let probe : ProbeFactory =
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
-        let run ttl =
+        let mutable stopwatch = Stopwatch()
+
+        let send ttl =
             let RemoteEP = probeOpts.RemoteEP ttl
             icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl)
             let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) ttl
-            let stopwatch = Stopwatch.StartNew ()
+            stopwatch.Start()
 
             try
                 icmpSocket.SendTo (packet, RemoteEP) |> ignore
-                receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
             with ex ->
                 printfn "Error sending ICMP packet: %s" ex.Message
+
+        let receive () =
+            try
+                receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
+            with ex ->
+                printfn "Error receiving ICMP response: %s" ex.Message
                 None
 
-        let dispose () = icmpSocket.Dispose ()
+        let dispose () = icmpSocket.Dispose()
 
-        run, dispose
+        send, receive, dispose

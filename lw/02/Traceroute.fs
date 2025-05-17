@@ -41,7 +41,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
         resolveHostname options.Hostname options.IpVersion
 
-    let Probe, Dispose =
+    let Send, Receive, Dispose =
         probeFactory
             options
             { LocalEP = new IPEndPoint (options.interfaceIP, 0)
@@ -50,11 +50,11 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
     let padding = options.MaxTTL.ToString().Length
 
-    member private _.PrintHopResult (ttl : int) (result : ProbeResult) =
+    member private _.PrintHopResult (ttl : int) (result : ProbeResult option) =
         printf "%*d  " padding ttl
 
         match result with
-        | Some (addr, elapsed, _, _, _) ->
+        | Some (addr, elapsed, _) ->
             try
                 let hostEntry = Dns.GetHostEntry addr
                 printfn "%s  (%s)  %dms" hostEntry.HostName (addr.ToString ()) (int elapsed)
@@ -63,12 +63,13 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
         | None -> printfn "*"
 
     member private this.Hop (ttl : int) =
-        let result = Probe ttl
+        Send ttl
+        let result = Receive()
         this.PrintHopResult ttl result
 
         let shouldStop =
             match result with
-            | Some (_, _, icmpType, icmpCode, isTarget) -> isTarget || icmpType = 3 && icmpCode = 3
+            | Some (_, _, isSuccess) -> isSuccess
             | None -> ttl >= options.MaxTTL
 
         if not shouldStop && ttl < options.MaxTTL then

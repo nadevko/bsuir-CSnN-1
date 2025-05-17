@@ -1,9 +1,6 @@
 module CSnN1.Lw02.Config
 
 open System.Net
-open System.Diagnostics
-
-let pid = Process.GetCurrentProcess().Id
 
 type IpVersion =
     | Any
@@ -14,7 +11,7 @@ type Protocol =
     | ICMP
     | UDP
 
-type ProbeResult = (IPAddress * int64 * int * int * bool) option
+type ProbeResult = IPAddress * int64 * bool
 
 type TraceOptions =
     { Hostname : string
@@ -35,4 +32,4 @@ type ProbeOptions =
       RemoteEP : int -> IPEndPoint
       Addresses : IPAddress array }
 
-type ProbeFactory = TraceOptions -> ProbeOptions -> (int -> ProbeResult) * (unit -> unit)
+type ProbeFactory = TraceOptions -> ProbeOptions -> (int -> unit) * (unit -> ProbeResult option) * (unit -> unit)

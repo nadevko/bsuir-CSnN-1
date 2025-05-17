@@ -85,8 +85,9 @@ let probe : ProbeFactory =
             new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
 
         udpSocket.SendTimeout <- traceOpts.SendTimeout
+        let mutable stopwatch = System.Diagnostics.Stopwatch()
 
-        let run ttl =
+        let send ttl =
             udpSocket.Ttl <- int16 ttl
             let RemoteEP = probeOpts.RemoteEP ttl
 
@@ -98,17 +99,22 @@ let probe : ProbeFactory =
                     probeOpts.LocalEP.Address
                     RemoteEP.Address
 
-            let stopwatch = System.Diagnostics.Stopwatch.StartNew ()
+            stopwatch.Start()
 
             try
                 udpSocket.SendTo (packet, RemoteEP) |> ignore
-                ICMP.receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
+
+        let receive () =
+            try
+                ICMP.receiveIcmpResponse icmpSocket stopwatch probeOpts.Addresses
+            with ex ->
+                printfn "Error receiving ICMP response: %s" ex.Message
                 None
 
         let dispose () =
-            icmpSocket.Dispose ()
-            udpSocket.Dispose ()
+            icmpSocket.Dispose()
+            udpSocket.Dispose()
 
-        run, dispose
+        send, receive, dispose
