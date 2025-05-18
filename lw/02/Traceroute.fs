@@ -5,10 +5,19 @@ open System
 open System.Net
 open System.Net.Sockets
 open System.Threading
+open System.Threading.Tasks
 open System.Collections.Generic
+
+type PrintEventArgs () =
+    inherit EventArgs ()
 
 type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
     let padding = options.MaxTTL.ToString().Length
+    let mutable currentTtl = options.FirstTTL
+    let mutable currentQuery = 1
+    let mutable printed = Set.empty<string>
+    let printLock = new Object ()
+    let cancellationEvent = new ManualResetEvent (false)
 
     let addresses, remoteIP =
         let resolveHostname (hostname : string) (ipVersion : IpVersion) =
@@ -60,6 +69,11 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
         dict
 
+    let printEvent = new Event<unit> ()
+
+    [<CLIEvent>]
+    member _.PrintEvent = printEvent.Publish
+
     member this.Start () =
         try
             printfn
@@ -69,11 +83,11 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 options.MaxTTL
                 options.PayloadSize
 
+            this.PrintEvent.Add (fun () -> Task.Run (fun () -> this.PrintAsync ()) |> ignore)
+
             this.SendAll options.FirstTTL options.Queries
 
-            Thread.Sleep 100
-
-            this.PrintAsync () |> Async.RunSynchronously
+            cancellationEvent.WaitOne () |> ignore
         with ex ->
             printfn "Error: %s" ex.Message
 
@@ -91,6 +105,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                     | Some result -> result.ttl
 
                 results.[updateTtl].Add result
+                printEvent.Trigger ()
 
             if remainingQueries > batchSize then
                 this.SendAll ttl (remainingQueries - batchSize)
@@ -99,18 +114,17 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 this.SendAll (ttl + 1) options.Queries
 
     member private _.PrintAsync () =
-        async {
-            for ttl in options.FirstTTL .. options.MaxTTL do
-                let mutable printed = Set.empty<string>
+        task {
+            if results.[currentTtl].Count < currentQuery then
+                return ()
+            lock
+                printLock
+                (fun () ->
+                    if currentQuery = 1 then
+                        printed <- Set.empty<string>
+                        printf "%*d" padding currentTtl
 
-                for query in 1 .. options.Queries do
-                    while results.[ttl].Count < query do
-                        Thread.Sleep options.ReceiveTimeout
-
-                    if query = 1 then
-                        printf "%*d" padding ttl
-
-                    match results.[ttl].[query - 1] with
+                    match results.[currentTtl].[currentQuery - 1] with
                     | None -> printf "  *"
                     | Some result ->
                         let ip = result.ip.ToString ()
@@ -131,8 +145,21 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                         printed <- printed.Add ip
                         printf " %dms" result.ms
 
-                    if query = options.Queries then
+                    if currentQuery = options.Queries then
                         printfn ""
+
+                        match results.[currentTtl].[currentQuery - 1] with
+                        | Some result when result.isSuccess -> cancellationEvent.Set () |> ignore
+                        | _ -> ()
+
+                        currentTtl <- currentTtl + 1
+                        currentQuery <- 1
+
+                        if currentTtl > options.MaxTTL then
+                            cancellationEvent.Set () |> ignore
+                    else
+                        currentQuery <- currentQuery + 1
+                )
         }
 
     interface IDisposable with
