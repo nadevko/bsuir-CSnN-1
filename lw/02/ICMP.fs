@@ -64,10 +64,9 @@ type IcmpResponse =
       ms : int64
       buffer : byte array
       icmpType : int
-      icmpCode : int
-      isSuccess : bool }
+      icmpCode : int }
 
-let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
+let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwatch) =
     let buffer = Array.zeroCreate<byte> bufferSize
     let remoteEP = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
@@ -83,15 +82,9 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
         let icmpType = if receiveBuffer >= 20 then int buffer.[20] else -1
         let icmpCode = if receiveBuffer >= 21 then int buffer.[21] else -1
 
-        let isSuccess =
-            icmpType = 0 && icmpCode = 0
-            || // Echo Reply
-            Array.exists (fun addr -> addr.Equals receiveAddress) allAddresses
-
         Some
             { ip = receiveAddress
               ms = stopwatch.ElapsedMilliseconds
-              isSuccess = isSuccess
               buffer = buffer
               icmpType = icmpType
               icmpCode = icmpCode }
@@ -121,7 +114,7 @@ let probe : ProbeFactory =
                 printfn "Error sending ICMP packet: %s" ex.Message
 
         let receive () =
-            match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
+            match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch with
             | Some response ->
                 let packetId =
                     if response.icmpType = 0 then
@@ -141,7 +134,10 @@ let probe : ProbeFactory =
                           ip = response.ip
                           ms = response.ms
                           hostName = tryGetHostName traceOpts response.ip
-                          isSuccess = response.isSuccess }
+                          isSuccess =
+                            response.icmpType = 0 && response.icmpCode = 0
+                            || // Echo Reply
+                            Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
             | _ -> None
 
         let dispose () = icmpSocket.Dispose ()

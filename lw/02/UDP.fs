@@ -5,24 +5,18 @@ open CSnN1.Lw02.Config
 open System.Net
 open System.Net.Sockets
 
-let createUdpPacket
-    (sourcePort : int)
-    (destinationPort : int)
-    (payloadSize : int)
-    (localIP : IPAddress)
-    (remoteIP : IPAddress)
-    =
+let createUdpPacket (localEP : IPEndPoint) (remoteEP : IPEndPoint) (payloadSize : int) =
     let headerSize = 8
     let totalSize = headerSize + payloadSize
 
     let packet =
         [|
            // Source port (2 bytes)
-           byte (sourcePort >>> 8)
-           byte sourcePort
+           byte (localEP.Port >>> 8)
+           byte localEP.Port
            // Destination port (2 bytes)
-           byte (destinationPort >>> 8)
-           byte destinationPort
+           byte (remoteEP.Port >>> 8)
+           byte remoteEP.Port
            // Length (2 bytes) - includes header and data
            byte (totalSize >>> 8)
            byte totalSize
@@ -36,9 +30,9 @@ let createUdpPacket
     let pseudoHeader =
         [|
            // Source IP (4 bytes)
-           yield! localIP.GetAddressBytes ()
+           yield! localEP.Address.GetAddressBytes ()
            // Destination IP (4 bytes)
-           yield! remoteIP.GetAddressBytes ()
+           yield! remoteEP.Address.GetAddressBytes ()
            // Zero (1 byte)
            0uy
            // Protocol (1 byte) - 17 for UDP
@@ -74,7 +68,6 @@ let createUdpPacket
 
 let probe : ProbeFactory =
     fun traceOpts probeOpts ->
-
         let icmpSocket =
             new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
@@ -85,39 +78,59 @@ let probe : ProbeFactory =
             new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
 
         udpSocket.SendTimeout <- traceOpts.SendTimeout
-        udpSocket.Bind probeOpts.LocalEP
+
         let mutable stopwatch = System.Diagnostics.Stopwatch ()
 
         let send ttl =
             let RemoteEP = probeOpts.RemoteEP ttl
+            udpSocket.Ttl <- int16 ttl
 
-            let packet =
-                createUdpPacket
-                    probeOpts.LocalEP.Port
-                    (probeOpts.LocalEP.Port + ttl)
-                    traceOpts.PayloadSize
-                    probeOpts.LocalEP.Address
-                    RemoteEP.Address
+            let packet = createUdpPacket probeOpts.LocalEP RemoteEP traceOpts.PayloadSize
 
-            stopwatch.Start ()
+            stopwatch.Restart ()
 
             try
-                udpSocket.Ttl <- int16 ttl
                 udpSocket.SendTo (packet, RemoteEP) |> ignore
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
 
         let receive () =
-            match ICMP.receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
+            match ICMP.receiveResponse icmpSocket 576 stopwatch with
             | Some response ->
-                Some
-                    { ttl =
-                        (int response.buffer.[48] <<< 8 ||| int response.buffer.[49])
-                        - probeOpts.LocalEP.Port
-                      ip = response.ip
-                      ms = response.ms
-                      hostName = ICMP.tryGetHostName traceOpts response.ip
-                      isSuccess = response.isSuccess }
+                try
+                    if response.buffer.Length >= 52 then
+                        let responsePort = int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
+                        let basePort = (probeOpts.RemoteEP 0).Port
+
+                        if responsePort >= basePort && responsePort <= basePort + traceOpts.MaxTTL then
+                            Some
+                                { ttl = responsePort - basePort
+                                  ip = response.ip
+                                  ms = response.ms
+                                  hostName = ICMP.tryGetHostName traceOpts response.ip
+                                  isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
+                        else
+                            Some
+                                { ttl = 0
+                                  ip = response.ip
+                                  ms = response.ms
+                                  hostName = ICMP.tryGetHostName traceOpts response.ip
+                                  isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
+                    else
+                        Some
+                            { ttl = 0
+                              ip = response.ip
+                              ms = response.ms
+                              hostName = ICMP.tryGetHostName traceOpts response.ip
+                              isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
+                with ex ->
+                    printfn "Error extracting port from ICMP response: %s" ex.Message
+                    Some
+                        { ttl = 0
+                          ip = response.ip
+                          ms = response.ms
+                          hostName = ICMP.tryGetHostName traceOpts response.ip
+                          isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
             | None -> None
 
         let dispose () =
