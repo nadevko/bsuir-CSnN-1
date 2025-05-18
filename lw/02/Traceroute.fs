@@ -5,6 +5,7 @@ open System
 open System.Net
 open System.Net.Sockets
 open System.Threading
+open System.Collections.Generic
 
 type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
     let padding = options.MaxTTL.ToString().Length
@@ -51,32 +52,13 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
               RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
               Addresses = addresses }
 
-    let completionEvent = new ManualResetEvent (false)
+    let results =
+        let dict = new Dictionary<int, Stack<string>> ()
 
-    let printLock = new Object ()
+        for i in 1 .. options.MaxTTL do
+            dict.[i] <- new Stack<string> ()
 
-    member private _.SendAsync (ttl : int) =
-        async {
-            Send ttl
-            let result = Receive ()
-
-            lock
-                printLock
-                (fun () ->
-                    match result with
-                    | Some result' ->
-                        try
-                            let hostEntry = Dns.GetHostEntry result'.ip
-                            printfn "%*d  (%s)  %dms" padding ttl hostEntry.HostName (int result'.ms)
-                        with _ ->
-                            printfn "%*d  %s  %dms" padding ttl (result'.ip.ToString ()) (int result'.ms)
-                    | None -> printfn "%*d  *" padding ttl
-
-                    if ttl >= options.MaxTTL then
-                        completionEvent.Set () |> ignore
-                )
-        }
-        |> Async.Start
+        dict
 
     member this.Start () =
         try
@@ -92,7 +74,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                     let batchSize = min options.Jobs remainingQueries
 
                     for _ in 1u .. batchSize do
-                        this.SendAsync ttl
+                        this.SendAsync ttl |> Async.Start
 
                     if remainingQueries > batchSize then
                         sendAll ttl (remainingQueries - batchSize)
@@ -102,10 +84,52 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
             sendAll options.FirstTTL options.Queries
 
-            completionEvent.WaitOne () |> ignore
-
+            this.PrintAsync () |> Async.RunSynchronously
         with ex ->
             printfn "Error: %s" ex.Message
+
+    member private this.SendAsync (ttl : int) =
+        async {
+            Send ttl
+            let result = Receive ()
+
+            let updateTtl =
+                match Receive () with
+                | None -> ttl
+                | Some result -> result.ttl
+
+            results.[updateTtl].Push (this.FormatResult result)
+        }
+
+    member private _.FormatResult (result : ProbeResult option) =
+        match result with
+        | Some result ->
+            let address = result.ip.ToString ()
+            let fallback () = sprintf "  %s %dms" address result.ms
+
+            if options.ResolveNames then
+                try
+                    let hostEntry = Dns.GetHostEntry result.ip
+                    sprintf "%s (%s) %dms" hostEntry.HostName address result.ms
+                with _ ->
+                    fallback ()
+            else
+                fallback ()
+        | None -> "*"
+
+    member private this.PrintAsync () =
+        async {
+            for ttl in options.FirstTTL..options.MaxTTL do
+                for query in 1u..options.Queries do
+                    while results.[ttl].Count = 0 do
+                        Thread.Sleep options.ReceiveTimeout
+                    let result = results.[ttl].Pop ()
+                    if query = 1u then
+                        printf "%*d" padding ttl
+                    printf "  %s" result
+                    if query = options.Queries then
+                        printfn ""
+        }
 
     interface IDisposable with
         member _.Dispose () = Dispose ()
