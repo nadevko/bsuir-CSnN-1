@@ -92,20 +92,23 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
             printfn "Error: %s" ex.Message
 
     member private this.SendAll (ttl : int) (remainingQueries : int) =
-        if ttl <= options.MaxTTL then
+        if ttl <= options.MaxTTL && cancellationEvent.WaitOne 0 |> not then
             let batchSize = min options.Jobs remainingQueries
 
-            for _ in 1..batchSize do
-                send ttl
-                let result = receive ()
+            [ for _ in 1..batchSize do
+                  send ttl
+                  let result = receive ()
 
-                let updateTtl =
-                    match result with
-                    | None -> ttl
-                    | Some result -> result.ttl
+                  let updateTtl =
+                      match result with
+                      | None -> ttl
+                      | Some result -> result.ttl
 
-                results.[updateTtl].Add result
-                printEvent.Trigger ()
+                  results.[updateTtl].Add result
+                  printEvent.Trigger () ]
+            |> Async.Parallel
+            |> Async.RunSynchronously
+            |> ignore
 
             if remainingQueries > batchSize then
                 this.SendAll ttl (remainingQueries - batchSize)
@@ -117,6 +120,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
         task {
             if results.[currentTtl].Count < currentQuery then
                 return ()
+
             lock
                 printLock
                 (fun () ->

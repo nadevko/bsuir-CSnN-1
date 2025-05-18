@@ -85,7 +85,7 @@ let main (args : string[]) : int =
 
     let jobsOption = new Option<int> ("--jobs", "Set the number of parallel probes")
     jobsOption.AddAlias "-j"
-    jobsOption.SetDefaultValue 1
+    jobsOption.SetDefaultValue 6
     rootCommand.AddOption jobsOption
 
     let sendTimeoutOption =
