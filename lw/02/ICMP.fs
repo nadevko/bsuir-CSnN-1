@@ -8,6 +8,16 @@ open System.Diagnostics
 
 let id = Process.GetCurrentProcess().Id
 
+let tryGetHostName options (ip : IPAddress) =
+    if not options.ResolveNames then
+        None
+    else
+        try
+            let host = Dns.GetHostEntry ip
+            Some host.HostName
+        with _ ->
+            None
+
 let calculateIcmpChecksum (packet : byte array) : uint16 =
     let mutable sum = 0
 
@@ -121,6 +131,7 @@ let probe : ProbeFactory =
                             int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
                       ip = response.ip
                       ms = response.ms
+                      hostName = tryGetHostName traceOpts response.ip
                       isSuccess = response.isSuccess }
             | _ -> None
 

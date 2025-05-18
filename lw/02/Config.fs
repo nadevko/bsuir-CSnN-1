@@ -15,6 +15,7 @@ type ProbeResult =
     { ttl : int
       ip : IPAddress
       ms : int64
+      hostName : string option
       isSuccess : bool }
 
 type TraceOptions =
@@ -24,12 +25,12 @@ type TraceOptions =
       Port : int
       SendTimeout : int
       ReceiveTimeout : int
-      Queries : uint
+      Queries : int
       ResolveNames : bool
       IpVersion : IpVersion
       PayloadSize : int
       interfaceIP : IPAddress
-      Jobs : uint }
+      Jobs : int }
 
 type ProbeOptions =
     { LocalEP : IPEndPoint

@@ -114,6 +114,7 @@ let probe : ProbeFactory =
                     { ttl = int response.buffer.[48] <<< 8 ||| int response.buffer.[49]
                       ip = response.ip
                       ms = response.ms
+                      hostName = ICMP.tryGetHostName traceOpts response.ip
                       isSuccess = response.isSuccess }
             | None -> None
 

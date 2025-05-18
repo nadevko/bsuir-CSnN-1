@@ -53,10 +53,10 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
               Addresses = addresses }
 
     let results =
-        let dict = new Dictionary<int, Stack<string>> ()
+        let dict = new Dictionary<int, List<ProbeResult option>> ()
 
         for i in 1 .. options.MaxTTL do
-            dict.[i] <- new Stack<string> ()
+            dict.[i] <- new ResizeArray<ProbeResult option> ()
 
         dict
 
@@ -77,11 +77,11 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
         with ex ->
             printfn "Error: %s" ex.Message
 
-    member private this.SendAll (ttl : int) (remainingQueries : uint) =
+    member private this.SendAll (ttl : int) (remainingQueries : int) =
         if ttl <= options.MaxTTL then
             let batchSize = min options.Jobs remainingQueries
 
-            for _ in 1u .. batchSize do
+            for _ in 1..batchSize do
                 send ttl
                 let result = receive ()
 
@@ -90,7 +90,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                     | None -> ttl
                     | Some result -> result.ttl
 
-                results.[updateTtl].Push (this.FormatResult result)
+                results.[updateTtl].Add result
 
             if remainingQueries > batchSize then
                 this.SendAll ttl (remainingQueries - batchSize)
@@ -98,35 +98,38 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 Thread.Sleep options.SendTimeout
                 this.SendAll (ttl + 1) options.Queries
 
-    member private _.FormatResult (result : ProbeResult option) =
-        match result with
-        | Some result ->
-            let address = result.ip.ToString ()
-            let fallback () = sprintf "%s %dms" address result.ms
-
-            if options.ResolveNames then
-                try
-                    let hostEntry = Dns.GetHostEntry result.ip
-                    sprintf "%s (%s) %dms" hostEntry.HostName address result.ms
-                with _ ->
-                    fallback ()
-            else
-                fallback ()
-        | None -> "*"
-
     member private _.PrintAsync () =
         async {
             for ttl in options.FirstTTL .. options.MaxTTL do
-                for query in 1u .. options.Queries do
-                    while results.[ttl].Count = 0 do
+                let mutable printed = Set.empty<string>
+
+                for query in 1 .. options.Queries do
+                    while results.[ttl].Count < query do
                         Thread.Sleep options.ReceiveTimeout
 
-                    let result = results.[ttl].Pop ()
-
-                    if query = 1u then
+                    if query = 1 then
                         printf "%*d" padding ttl
 
-                    printf "  %s" result
+                    match results.[ttl].[query - 1] with
+                    | None -> printf "  *"
+                    | Some result ->
+                        let ip = result.ip.ToString ()
+
+                        if result.hostName.IsSome && not (printed.Contains result.hostName.Value) then
+                            printf "  %s" result.hostName.Value
+                            printed <- printed.Add result.hostName.Value
+
+                            if not (printed.Contains ip) then
+                                printf " (%s)" ip
+                                printed <- printed.Add ip
+                        elif not (printed.Contains ip) then
+                            printf "  %s" ip
+                            printed <- printed.Add ip
+                        else
+                            printf " "
+
+                        printed <- printed.Add ip
+                        printf " %dms" result.ms
 
                     if query = options.Queries then
                         printfn ""
