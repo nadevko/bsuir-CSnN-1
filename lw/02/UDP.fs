@@ -93,8 +93,8 @@ let probe : ProbeFactory =
 
             let packet =
                 createUdpPacket
-                    traceOpts.Port
-                    (traceOpts.Port + ttl)
+                    probeOpts.LocalEP.Port
+                    (probeOpts.LocalEP.Port + ttl)
                     traceOpts.PayloadSize
                     probeOpts.LocalEP.Address
                     RemoteEP.Address
@@ -111,7 +111,9 @@ let probe : ProbeFactory =
             match ICMP.receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
             | Some response ->
                 Some
-                    { ttl = int response.buffer.[48] <<< 8 ||| int response.buffer.[49]
+                    { ttl =
+                        (int response.buffer.[48] <<< 8 ||| int response.buffer.[49])
+                        - probeOpts.LocalEP.Port
                       ip = response.ip
                       ms = response.ms
                       hostName = ICMP.tryGetHostName traceOpts response.ip

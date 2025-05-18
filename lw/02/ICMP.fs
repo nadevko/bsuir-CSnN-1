@@ -123,16 +123,25 @@ let probe : ProbeFactory =
         let receive () =
             match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
             | Some response ->
-                Some
-                    { ttl =
-                        if response.icmpType = 0 then
-                            int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
-                        else
-                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
-                      ip = response.ip
-                      ms = response.ms
-                      hostName = tryGetHostName traceOpts response.ip
-                      isSuccess = response.isSuccess }
+                let packetId =
+                    if response.icmpType = 0 then
+                        int response.buffer.[24] <<< 8 ||| int response.buffer.[25]
+                    else
+                        int response.buffer.[52] <<< 8 ||| int response.buffer.[53]
+
+                if packetId <> id then
+                    None
+                else
+                    Some
+                        { ttl =
+                            if response.icmpType = 0 then
+                                int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
+                            else
+                                int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
+                          ip = response.ip
+                          ms = response.ms
+                          hostName = tryGetHostName traceOpts response.ip
+                          isSuccess = response.isSuccess }
             | _ -> None
 
         let dispose () = icmpSocket.Dispose ()
