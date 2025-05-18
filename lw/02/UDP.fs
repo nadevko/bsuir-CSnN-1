@@ -89,7 +89,6 @@ let probe : ProbeFactory =
         let mutable stopwatch = System.Diagnostics.Stopwatch ()
 
         let send ttl =
-            udpSocket.Ttl <- int16 ttl
             let RemoteEP = probeOpts.RemoteEP ttl
 
             let packet =
@@ -103,18 +102,19 @@ let probe : ProbeFactory =
             stopwatch.Start ()
 
             try
+                udpSocket.Ttl <- int16 ttl
                 udpSocket.SendTo (packet, RemoteEP) |> ignore
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
 
         let receive () =
-            match ICMP.receiveResponse icmpSocket 22 stopwatch probeOpts.Addresses with
-            | Some (receiveAddress, elapsed, isSuccess, buffer) ->
+            match ICMP.receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
+            | Some response ->
                 Some
-                    { ttl = int buffer.[48] <<< 8 ||| int buffer.[49]
-                      ip = receiveAddress
-                      ms = elapsed
-                      isSuccess = isSuccess }
+                    { ttl = int response.buffer.[48] <<< 8 ||| int response.buffer.[49]
+                      ip = response.ip
+                      ms = response.ms
+                      isSuccess = response.isSuccess }
             | None -> None
 
         let dispose () =

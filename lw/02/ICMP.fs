@@ -6,12 +6,23 @@ open System.Net
 open System.Net.Sockets
 open System.Diagnostics
 
-let pid = Process.GetCurrentProcess().Id
+let id = Process.GetCurrentProcess().Id
+
+let calculateIcmpChecksum (packet : byte array) : uint16 =
+    let mutable sum = 0
+
+    for i in 0..2 .. packet.Length - 1 do
+        let highByte = if i < packet.Length then int packet.[i] else 0
+        let lowByte = if i + 1 < packet.Length then int packet.[i + 1] else 0
+        let word = highByte <<< 8 ||| lowByte
+        sum <- sum + word
+
+    while sum >>> 16 > 0 do
+        sum <- (sum &&& 0xFFFF) + (sum >>> 16)
+
+    uint16 ~~~sum
 
 let createIcmpPacket (payloadSize : int) (sequence : int) =
-    let headerSize = 8
-    let totalSize = headerSize + payloadSize
-
     // Create the initial packet with header values
     let packet =
         [|
@@ -23,8 +34,8 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
            0uy
            0uy
            // Identifier
-           byte (pid >>> 8)
-           byte pid
+           byte (id >>> 8)
+           byte id
            // Sequence number
            byte (sequence >>> 8)
            byte sequence
@@ -32,26 +43,22 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
            yield! [| for _ in 1..payloadSize -> 0uy |] |]
 
     // Calculate ICMP checksum
-    let mutable checksum = 0us
-
-    for i in 0..2 .. totalSize - 1 do
-        if i + 1 < totalSize then
-            checksum <- checksum + (uint16 packet.[i] <<< 8) + uint16 packet.[i + 1]
-        else
-            checksum <- checksum + (uint16 packet.[i] <<< 8)
-
-    while checksum >>> 16 > 0us do
-        checksum <- (checksum &&& 0xFFFFus) + (checksum >>> 16)
-
-    checksum <- ~~~checksum
-
+    let checksum = calculateIcmpChecksum packet
     packet.[2] <- byte (checksum >>> 8)
     packet.[3] <- byte checksum
 
     packet
 
-let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
-    let buffer = Array.zeroCreate<byte> (28 + payload)
+type IcmpResponse =
+    { ip : IPAddress
+      ms : int64
+      buffer : byte array
+      icmpType : int
+      icmpCode : int
+      isSuccess : bool }
+
+let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwatch) (allAddresses : IPAddress array) =
+    let buffer = Array.zeroCreate<byte> bufferSize
     let remoteEP = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
@@ -71,7 +78,13 @@ let receiveResponse (icmpSocket : Socket) (payload : int) (stopwatch : Stopwatch
             || // Echo Reply
             Array.exists (fun addr -> addr.Equals receiveAddress) allAddresses
 
-        Some (receiveAddress, stopwatch.ElapsedMilliseconds, isSuccess, buffer)
+        Some
+            { ip = receiveAddress
+              ms = stopwatch.ElapsedMilliseconds
+              isSuccess = isSuccess
+              buffer = buffer
+              icmpType = icmpType
+              icmpCode = icmpCode }
     with _ ->
         None
 
@@ -88,22 +101,27 @@ let probe : ProbeFactory =
         let send ttl =
             let RemoteEP = probeOpts.RemoteEP ttl
             icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl)
-            let packet = createIcmpPacket (max 0 traceOpts.PayloadSize) ttl
+            let packet = createIcmpPacket traceOpts.PayloadSize ttl
             stopwatch.Start ()
 
             try
+                icmpSocket.Ttl <- int16 ttl
                 icmpSocket.SendTo (packet, RemoteEP) |> ignore
             with ex ->
                 printfn "Error sending ICMP packet: %s" ex.Message
 
         let receive () =
-            match receiveResponse icmpSocket traceOpts.PayloadSize stopwatch probeOpts.Addresses with
-            | Some (receiveAddress, elapsed, isSuccess, receiveBuffer) ->
+            match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch probeOpts.Addresses with
+            | Some response ->
                 Some
-                    { ttl = int receiveBuffer.[26] <<< 8 ||| int receiveBuffer.[27]
-                      ip = receiveAddress
-                      ms = elapsed
-                      isSuccess = isSuccess }
+                    { ttl =
+                        if response.icmpType = 0 then
+                            int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
+                        else
+                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
+                      ip = response.ip
+                      ms = response.ms
+                      isSuccess = response.isSuccess }
             | _ -> None
 
         let dispose () = icmpSocket.Dispose ()

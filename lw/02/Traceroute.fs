@@ -45,7 +45,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
         resolveHostname options.Hostname options.IpVersion
 
-    let Send, Receive, Dispose =
+    let send, receive, dispose =
         probeFactory
             options
             { LocalEP = new IPEndPoint (options.interfaceIP, 0)
@@ -69,43 +69,40 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 options.MaxTTL
                 options.PayloadSize
 
-            let rec sendAll ttl remainingQueries =
-                if ttl <= options.MaxTTL then
-                    let batchSize = min options.Jobs remainingQueries
+            this.SendAll options.FirstTTL options.Queries
 
-                    for _ in 1u .. batchSize do
-                        this.SendAsync ttl |> Async.Start
-
-                    if remainingQueries > batchSize then
-                        sendAll ttl (remainingQueries - batchSize)
-                    else
-                        Thread.Sleep options.SendTimeout
-                        sendAll (ttl + 1) options.Queries
-
-            sendAll options.FirstTTL options.Queries
+            Thread.Sleep 100
 
             this.PrintAsync () |> Async.RunSynchronously
         with ex ->
             printfn "Error: %s" ex.Message
 
-    member private this.SendAsync (ttl : int) =
-        async {
-            Send ttl
-            let result = Receive ()
+    member private this.SendAll (ttl : int) (remainingQueries : uint) =
+        if ttl <= options.MaxTTL then
+            let batchSize = min options.Jobs remainingQueries
 
-            let updateTtl =
-                match Receive () with
-                | None -> ttl
-                | Some result -> result.ttl
+            for _ in 1u .. batchSize do
+                send ttl
+                let result = receive ()
 
-            results.[updateTtl].Push (this.FormatResult result)
-        }
+                let updateTtl =
+                    match result with
+                    | None -> ttl
+                    | Some result -> result.ttl
+
+                results.[updateTtl].Push (this.FormatResult result)
+
+            if remainingQueries > batchSize then
+                this.SendAll ttl (remainingQueries - batchSize)
+            else
+                Thread.Sleep options.SendTimeout
+                this.SendAll (ttl + 1) options.Queries
 
     member private _.FormatResult (result : ProbeResult option) =
         match result with
         | Some result ->
             let address = result.ip.ToString ()
-            let fallback () = sprintf "  %s %dms" address result.ms
+            let fallback () = sprintf "%s %dms" address result.ms
 
             if options.ResolveNames then
                 try
@@ -117,19 +114,23 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 fallback ()
         | None -> "*"
 
-    member private this.PrintAsync () =
+    member private _.PrintAsync () =
         async {
-            for ttl in options.FirstTTL..options.MaxTTL do
-                for query in 1u..options.Queries do
+            for ttl in options.FirstTTL .. options.MaxTTL do
+                for query in 1u .. options.Queries do
                     while results.[ttl].Count = 0 do
                         Thread.Sleep options.ReceiveTimeout
+
                     let result = results.[ttl].Pop ()
+
                     if query = 1u then
                         printf "%*d" padding ttl
+
                     printf "  %s" result
+
                     if query = options.Queries then
                         printfn ""
         }
 
     interface IDisposable with
-        member _.Dispose () = Dispose ()
+        member _.Dispose () = dispose ()
