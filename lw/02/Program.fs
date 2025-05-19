@@ -21,10 +21,11 @@ let getNetworkInterfaces (family : AddressFamily option) =
 
             properties.UnicastAddresses
             |> Seq.filter (fun unicast ->
-                if family.IsNone then
-                    true
-                else
-                    unicast.Address.AddressFamily = family.Value
+                not unicast.Address.IsIPv6LinkLocal
+                && if family.IsNone then
+                       true
+                   else
+                       unicast.Address.AddressFamily = family.Value
             )
             |> Seq.iter (fun unicast -> interfaces[netInterface.Name] <- unicast.Address)
         )
