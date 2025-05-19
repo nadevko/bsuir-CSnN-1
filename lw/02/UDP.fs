@@ -122,13 +122,8 @@ type Prober (options : ProbeOptions) =
                           ms = response.ms
                           hostName = ICMP.tryGetHostName options.ResolveNames response.ip
                           isSuccess =
-                            (addressFamily = AddressFamily.InterNetwork
-                             && response.icmpType = 3
-                             && response.icmpCode = 3
-                             || addressFamily = AddressFamily.InterNetworkV6
-                                && response.icmpType = 1
-                                && response.icmpCode = 4)
-                            && isTtlExtractable
+                            response.icmpType = 3
+                            && response.icmpCode = 3
                             && Array.exists (fun addr -> addr.Equals response.ip) options.Addresses }
                 with _ ->
                     None

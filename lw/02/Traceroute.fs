@@ -2,8 +2,6 @@ module CSnN1.Lw02.Traceroute
 
 open CSnN1.Lw02.Config
 open System
-open System.Net
-open System.Net.Sockets
 open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
