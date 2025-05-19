@@ -24,7 +24,7 @@ let createUdpPacket (sourcePort : int) (destPort : int) (payloadSize : int) =
 
     packet
 
-let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddress) =
+let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddress) (addressFamily : AddressFamily) =
     let packet = Array.copy udpPacket
 
     packet.[6] <- 0uy
@@ -33,12 +33,25 @@ let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddre
     let totalSize = packet.Length
 
     let pseudoHeader =
-        [| yield! sourceIP.GetAddressBytes ()
-           yield! destIP.GetAddressBytes ()
-           0uy
-           17uy
-           byte (totalSize >>> 8)
-           byte totalSize |]
+        match addressFamily with
+        | AddressFamily.InterNetworkV6 ->
+            [| yield! sourceIP.GetAddressBytes ()
+               yield! destIP.GetAddressBytes ()
+               0uy
+               0uy
+               byte (totalSize >>> 8)
+               byte totalSize
+               0uy
+               0uy
+               0uy
+               17uy |]
+        | _ ->
+            [| yield! sourceIP.GetAddressBytes ()
+               yield! destIP.GetAddressBytes ()
+               0uy
+               17uy
+               byte (totalSize >>> 8)
+               byte totalSize |]
 
     let checksum =
         let sum = calculateChecksum (Array.concat [ pseudoHeader ; packet ])
@@ -49,30 +62,32 @@ let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddre
 
     packet
 
-type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
+type Prober (options : ProbeOptions) =
+    let addressFamily = options.LocalEP.AddressFamily
+
     let icmpSocket =
-        new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
+        match addressFamily with
+        | AddressFamily.InterNetworkV6 -> new Socket (AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.IcmpV6)
+        | _ -> new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
     do
-        icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
-        icmpSocket.Bind probeOpts.LocalEP
+        icmpSocket.ReceiveTimeout <- options.ReceiveTimeout
+        icmpSocket.Bind options.LocalEP
 
-    let udpSocket =
-        new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+    let udpSocket = new Socket (addressFamily, SocketType.Dgram, ProtocolType.Udp)
 
-    do udpSocket.SendTimeout <- traceOpts.SendTimeout
+    do udpSocket.SendTimeout <- options.SendTimeout
 
     interface IProber with
         member _.Probe ttl =
-            let remoteEP = probeOpts.RemoteEP ttl
+            let remoteEP = options.RemoteEP (options.LocalEP.Port + ttl)
 
             udpSocket.Ttl <- int16 ttl
 
-            let packet =
-                createUdpPacket probeOpts.LocalEP.Port remoteEP.Port traceOpts.PayloadSize
+            let packet = createUdpPacket options.LocalEP.Port remoteEP.Port options.PayloadSize
 
             let packetWithChecksum =
-                setUdpChecksum packet probeOpts.LocalEP.Address remoteEP.Address
+                setUdpChecksum packet options.LocalEP.Address remoteEP.Address addressFamily
 
             let stopwatch = new Stopwatch ()
 
@@ -82,27 +97,39 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
 
-            match ICMP.receiveResponse icmpSocket 52 stopwatch with
+            let bufferSize =
+                match addressFamily with
+                | AddressFamily.InterNetworkV6 -> 72
+                | _ -> 52
+
+            match ICMP.receiveResponse icmpSocket bufferSize stopwatch with
             | Some response ->
-                let responsePort = int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
-                let basePort = probeOpts.RemoteEP(0).Port
+                let responsePort =
+                    match addressFamily with
+                    | AddressFamily.InterNetworkV6 -> int response.buffer.[70] <<< 8 ||| int response.buffer.[71]
+                    | _ -> int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
+
+                let basePort = options.RemoteEP(0).Port
 
                 let isTtlExtractable =
-                    response.buffer.Length = 52
-                    && responsePort >= basePort
-                    && responsePort <= basePort + (traceOpts.MaxTTL - traceOpts.FirstTTL)
+                    responsePort >= basePort
+                    && responsePort <= basePort + (options.MaxTTL - options.FirstTTL)
 
                 try
                     Some
                         { ttl = if isTtlExtractable then responsePort - basePort else ttl
                           ip = response.ip
                           ms = response.ms
-                          hostName = ICMP.tryGetHostName traceOpts response.ip
+                          hostName = ICMP.tryGetHostName options.ResolveNames response.ip
                           isSuccess =
-                            response.icmpType = 3
-                            && response.icmpCode = 3
+                            (addressFamily = AddressFamily.InterNetwork
+                             && response.icmpType = 3
+                             && response.icmpCode = 3
+                             || addressFamily = AddressFamily.InterNetworkV6
+                                && response.icmpType = 1
+                                && response.icmpCode = 4)
                             && isTtlExtractable
-                            && Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
+                            && Array.exists (fun addr -> addr.Equals response.ip) options.Addresses }
                 with _ ->
                     None
             | None -> None

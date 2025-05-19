@@ -9,8 +9,8 @@ open System.Diagnostics
 
 let id = Process.GetCurrentProcess().Id
 
-let tryGetHostName options (ip : IPAddress) =
-    if not options.ResolveNames then
+let tryGetHostName (resolveNames : bool) (ip : IPAddress) =
+    if not resolveNames then
         None
     else
         try
@@ -69,20 +69,21 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
     with _ ->
         None
 
-type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
+type Prober (options : ProbeOptions) =
     let icmpSocket =
         new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
     do
-        icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
-        icmpSocket.Bind probeOpts.LocalEP
+        icmpSocket.ReceiveTimeout <- options.ReceiveTimeout
+        icmpSocket.Bind options.LocalEP
+
+    let remoteEP = options.RemoteEP 0
 
     interface IProber with
         member _.Probe ttl =
-            let remoteEP = probeOpts.RemoteEP ttl
             icmpSocket.Ttl <- int16 ttl
 
-            let packet = createIcmpPacket traceOpts.PayloadSize ttl
+            let packet = createIcmpPacket options.PayloadSize ttl
             let stopwatch = new Stopwatch ()
 
             stopwatch.Start ()
@@ -98,10 +99,10 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
                             int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
                       ip = response.ip
                       ms = response.ms
-                      hostName = tryGetHostName traceOpts response.ip
+                      hostName = tryGetHostName options.ResolveNames response.ip
                       isSuccess =
                         response.icmpType = 0 && response.icmpCode = 0
-                        || Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
+                        || Array.exists (fun addr -> addr.Equals response.ip) options.Addresses }
             | _ -> None
 
     interface System.IDisposable with

@@ -8,64 +8,28 @@ open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
 
-let resolveHostname (hostname : string) (ipVersion : IpVersion) =
-    let hostEntry = Dns.GetHostEntry hostname
-    let addresses = hostEntry.AddressList
-
-    if addresses.Length = 0 then
-        raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
-
-    let ip =
-        match
-            addresses
-            |> Array.tryFind (fun ip -> ip.ToString () = hostname)
-            |> Option.orElse (
-                addresses
-                |> Array.tryFind (fun ip ->
-                    match ipVersion with
-                    | Any -> true
-                    | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
-                    | _ -> true
-                )
-            )
-        with
-        | Some ip -> ip
-        | None ->
-            raise (
-                WebException (sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname)
-            )
-
-    addresses, ip
-
-let trace (options : TraceOptions) =
-    let padding = options.MaxTTL.ToString().Length
+let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
+    let padding = probeOpts.MaxTTL.ToString().Length
     let printLock = new Object ()
 
     let cancellationEvent = new ManualResetEvent false
     let printEvent = new Event<unit> ()
 
-    let mutable currentTtl = options.FirstTTL
+    let mutable currentTtl = probeOpts.FirstTTL
     let mutable currentQuery = 1
     let mutable printed = Set.empty<string>
 
-    let addresses, remoteIP = resolveHostname options.Hostname options.IpVersion
-
-    let probeOptions =
-        { LocalEP = new IPEndPoint (options.interfaceIP, 0)
-          RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
-          Addresses = addresses }
-
     let prober =
-        match options.Protocol with
-        | Protocol.ICMP -> new ICMP.Prober (options, probeOptions) :> IProber
-        | Protocol.UDP -> new UDP.Prober (options, probeOptions) :> IProber
+        match traceOpts.Protocol with
+        | Protocol.ICMP -> new ICMP.Prober (probeOpts) :> IProber
+        | Protocol.UDP -> new UDP.Prober (probeOpts) :> IProber
         | Protocol.Auto
-        | _ -> new Auto.Prober (options, probeOptions) :> IProber
+        | _ -> new Auto.Prober (traceOpts, probeOpts) :> IProber
 
     let results =
         let dict = new Dictionary<int, List<ProbeResult option>> ()
 
-        for i in 1 .. options.MaxTTL do
+        for i in 1 .. probeOpts.MaxTTL do
             dict.[i] <- new ResizeArray<ProbeResult option> ()
 
         dict
@@ -100,7 +64,7 @@ let trace (options : TraceOptions) =
 
                             printf " %dms" result.ms
 
-                        if currentQuery = options.Queries then
+                        if currentQuery = traceOpts.Queries then
                             printfn ""
 
                             let lastResult = results.[currentTtl].[currentQuery - 1]
@@ -111,7 +75,7 @@ let trace (options : TraceOptions) =
                             currentTtl <- currentTtl + 1
                             currentQuery <- 1
 
-                            if currentTtl > options.MaxTTL then
+                            if currentTtl > probeOpts.MaxTTL then
                                 cancellationEvent.Set () |> ignore
                         else
                             currentQuery <- currentQuery + 1
@@ -119,8 +83,8 @@ let trace (options : TraceOptions) =
         }
 
     let rec sendProbes ttl remainingQueries =
-        if ttl <= options.MaxTTL && cancellationEvent.WaitOne 0 |> not then
-            let batchSize = min options.Jobs remainingQueries
+        if ttl <= probeOpts.MaxTTL && cancellationEvent.WaitOne 0 |> not then
+            let batchSize = min traceOpts.Jobs remainingQueries
 
             [ for _ in 1..batchSize do
                   let result = prober.Probe ttl
@@ -139,20 +103,20 @@ let trace (options : TraceOptions) =
             if remainingQueries > batchSize then
                 sendProbes ttl (remainingQueries - batchSize)
             else
-                Thread.Sleep options.SendTimeout
-                sendProbes (ttl + 1) options.Queries
+                Thread.Sleep probeOpts.SendTimeout
+                sendProbes (ttl + 1) traceOpts.Queries
 
     try
         printfn
             "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
-            options.Hostname
-            (remoteIP.ToString ())
-            options.MaxTTL
-            options.PayloadSize
+            traceOpts.Hostname
+            (probeOpts.RemoteEP(0).Address.ToString ())
+            probeOpts.MaxTTL
+            probeOpts.PayloadSize
 
         printEvent.Publish.Add (fun _ -> Task.Run (fun () -> printResults().GetAwaiter().GetResult ()) |> ignore)
 
-        sendProbes options.FirstTTL options.Queries
+        sendProbes probeOpts.FirstTTL traceOpts.Queries
 
         cancellationEvent.WaitOne () |> ignore
     finally

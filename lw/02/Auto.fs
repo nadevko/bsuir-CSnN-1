@@ -5,8 +5,8 @@ open System.Net
 open System.Threading
 
 type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
-    let udpProber = new UDP.Prober (traceOpts, probeOpts)
-    let icmpProber = new ICMP.Prober (traceOpts, probeOpts)
+    let udpProber = new UDP.Prober (probeOpts)
+    let icmpProber = new ICMP.Prober (probeOpts)
 
     let isDisposed = ref false
 

@@ -2,11 +2,6 @@ module CSnN1.Lw02.Config
 
 open System.Net
 
-type IpVersion =
-    | Any
-    | IPv4
-    | IPv6
-
 type Protocol =
     | ICMP = 1uy
     | UDP = 17uy
@@ -26,19 +21,16 @@ type IProber =
 type TraceOptions =
     { Hostname : string
       Protocol : Protocol
-      FirstTTL : int
-      MaxTTL : int
-      Port : int
-      SendTimeout : int
-      ReceiveTimeout : int
       Queries : int
-      ResolveNames : bool
-      IpVersion : IpVersion
-      PayloadSize : int
-      interfaceIP : IPAddress
       Jobs : int }
 
 type ProbeOptions =
     { LocalEP : IPEndPoint
       RemoteEP : int -> IPEndPoint
+      SendTimeout : int
+      ReceiveTimeout : int
+      FirstTTL : int
+      MaxTTL : int
+      PayloadSize : int
+      ResolveNames : bool
       Addresses : IPAddress array }

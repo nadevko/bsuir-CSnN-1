@@ -8,14 +8,9 @@ open System.Net
 open System.Net.NetworkInformation
 open System.Collections.Generic
 open Traceroute
+open System.Net.Sockets
 
-let rec checkIPVersion (ipVersion : IpVersion) (ipAddress : IPAddress) =
-    match ipVersion with
-    | Any -> checkIPVersion IPv4 ipAddress || checkIPVersion IPv6 ipAddress
-    | IPv4 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork
-    | IPv6 -> ipAddress.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6
-
-let getNetworkInterfaces (ipVersion : IpVersion) =
+let getNetworkInterfaces (family : AddressFamily option) =
     let interfaces = new Dictionary<string, IPAddress> ()
 
     try
@@ -25,13 +20,45 @@ let getNetworkInterfaces (ipVersion : IpVersion) =
             let properties = netInterface.GetIPProperties ()
 
             properties.UnicastAddresses
-            |> Seq.filter (fun unicast -> checkIPVersion ipVersion unicast.Address)
+            |> Seq.filter (fun unicast ->
+                if family.IsNone then
+                    true
+                else
+                    unicast.Address.AddressFamily = family.Value
+            )
             |> Seq.iter (fun unicast -> interfaces[netInterface.Name] <- unicast.Address)
         )
     with ex ->
         printfn "Error getting network interfaces: %s" ex.Message
 
     interfaces
+
+let resolveHostname (hostname : string) (family : AddressFamily option) =
+    let hostEntry = Dns.GetHostEntry hostname
+    let addresses = hostEntry.AddressList
+
+    if addresses.Length = 0 then
+        raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
+
+    let ip =
+        let addressesAF =
+            addresses
+            |> Array.filter (fun ip ->
+                if family.IsNone then
+                    true
+                else
+                    family.Value = ip.AddressFamily
+            )
+
+        match addresses |> Array.tryFind (fun ip -> ip.ToString () = hostname) with
+        | Some ip -> ip
+        | None ->
+            if addressesAF.Length = 0 then
+                failwithf "Could not resolve hostname: %s" hostname
+            else
+                addressesAF |> Array.head
+
+    addresses, ip
 
 [<EntryPoint>]
 let main (args : string[]) : int =
@@ -71,7 +98,9 @@ let main (args : string[]) : int =
     noResolveOption.AddAlias "-n"
     rootCommand.AddOption noResolveOption
 
-    let portOption = new Option<uint16> ("--port", "Set the destination port to use.")
+    let portOption =
+        new Option<uint16> ("--port", "Set the destination port to use. Use 0 for random.")
+
     portOption.AddAlias "-p"
     portOption.SetDefaultValue 33434us
     rootCommand.AddOption portOption
@@ -123,14 +152,15 @@ let main (args : string[]) : int =
         try
             let interfaceIP = ctx.ParseResult.GetValueForOption interfaceOption
 
-            let IpVersion =
-                if ctx.ParseResult.GetValueForOption ipv6Option then IPv6
-                elif ctx.ParseResult.GetValueForOption ipv4Option then IPv4
-                else Any
+            let family =
+                if ctx.ParseResult.GetValueForOption ipv6Option then
+                    Some AddressFamily.InterNetworkV6
+                elif ctx.ParseResult.GetValueForOption ipv4Option then
+                    Some AddressFamily.InterNetwork
+                else
+                    None
 
-            let interfaces = getNetworkInterfaces IpVersion
-
-            let options =
+            let traceOpts =
                 { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
                   Protocol =
                     if ctx.ParseResult.GetValueForOption icmpOption then
@@ -139,23 +169,34 @@ let main (args : string[]) : int =
                         Protocol.UDP
                     else
                         Protocol.Auto
-                  Port = int (ctx.ParseResult.GetValueForOption portOption)
-                  SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
-                  ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
+                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption)
+                  Queries = int (ctx.ParseResult.GetValueForOption queriesOption) }
+
+            let addresses, remoteIP = resolveHostname traceOpts.Hostname family
+
+            let port = int (ctx.ParseResult.GetValueForOption portOption)
+
+            let interfaceIP =
+                if String.IsNullOrEmpty interfaceIP then
+                    match remoteIP.AddressFamily with
+                    | AddressFamily.InterNetworkV6 -> IPAddress.IPv6Any
+                    | _ -> IPAddress.Any
+                else
+                    getNetworkInterfaces(family).[interfaceIP]
+
+            let probeOpts =
+                { LocalEP = new IPEndPoint (interfaceIP, port)
+                  RemoteEP = fun port' -> new IPEndPoint (remoteIP, port')
+                  Addresses = addresses
                   MaxTTL = int (ctx.ParseResult.GetValueForOption maxHopsOption)
                   FirstTTL = int (ctx.ParseResult.GetValueForOption firstTtlOption)
-                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption)
-                  Queries = int (ctx.ParseResult.GetValueForOption queriesOption)
-                  ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption)
-                  IpVersion = IpVersion
+                  SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
+                  ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
                   PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0
-                  interfaceIP =
-                    if String.IsNullOrEmpty interfaceIP then
-                        IPAddress.Any
-                    else
-                        interfaces.[interfaceIP] }
+                  ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption) }
 
-            trace options
+            trace traceOpts probeOpts
+
             ctx.ExitCode <- 0
         with ex ->
             printfn "Error: %s" ex.Message
@@ -164,7 +205,7 @@ let main (args : string[]) : int =
 
     rootCommand.AddValidator (fun result ->
         let selectedInterface = result.GetValueForOption interfaceOption
-        let interfaces = getNetworkInterfaces Any
+        let interfaces = getNetworkInterfaces None
 
         if not (String.IsNullOrEmpty selectedInterface) then
             if not (interfaces.ContainsKey selectedInterface) then
