@@ -10,6 +10,7 @@ type IpVersion =
 type Protocol =
     | ICMP = 1uy
     | UDP = 17uy
+    | Auto = 0uy
 
 type ProbeResult =
     { ttl : int

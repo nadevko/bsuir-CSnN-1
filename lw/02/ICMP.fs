@@ -20,26 +20,17 @@ let tryGetHostName options (ip : IPAddress) =
             None
 
 let createIcmpPacket (payloadSize : int) (sequence : int) =
-    // Create the initial packet with header values
     let packet =
-        [|
-           // Type (8 = Echo Request)
-           8uy
-           // Code (0 for Echo)
-           0uy
-           // Checksum placeholder
+        [| 8uy
            0uy
            0uy
-           // Identifier
+           0uy
            byte (id >>> 8)
            byte id
-           // Sequence number
            byte (sequence >>> 8)
            byte sequence
-           // Payload (zeros)
            yield! [| for _ in 1..payloadSize -> 0uy |] |]
 
-    // Calculate ICMP checksum using the common checksum function
     let checksum = calculateChecksum packet
     packet.[2] <- byte (checksum >>> 8)
     packet.[3] <- byte checksum
@@ -92,10 +83,10 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
             icmpSocket.Ttl <- int16 ttl
 
             let packet = createIcmpPacket traceOpts.PayloadSize ttl
-            let stopwatch = new Stopwatch()
+            let stopwatch = new Stopwatch ()
 
             try
-                stopwatch.Start()
+                stopwatch.Start ()
                 icmpSocket.SendTo (packet, RemoteEP) |> ignore
             with ex ->
                 printfn "Error sending ICMP packet: %s" ex.Message
@@ -122,10 +113,8 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
                           hostName = tryGetHostName traceOpts response.ip
                           isSuccess =
                             response.icmpType = 0 && response.icmpCode = 0
-                            || // Echo Reply
-                            Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
+                            || Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
             | _ -> None
 
     interface System.IDisposable with
-        member _.Dispose () =
-                icmpSocket.Dispose ()
+        member _.Dispose () = icmpSocket.Dispose ()

@@ -135,8 +135,10 @@ let main (args : string[]) : int =
                   Protocol =
                     if ctx.ParseResult.GetValueForOption icmpOption then
                         Protocol.ICMP
-                    else
+                    elif ctx.ParseResult.GetValueForOption udpOption then
                         Protocol.UDP
+                    else
+                        Protocol.Auto
                   Port = int (ctx.ParseResult.GetValueForOption portOption)
                   SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)

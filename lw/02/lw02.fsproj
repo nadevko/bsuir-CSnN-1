@@ -8,6 +8,7 @@
     <Compile Include="Checksum.fs" />
     <Compile Include="ICMP.fs" />
     <Compile Include="UDP.fs" />
+    <Compile Include="Auto.fs" />
     <Compile Include="Traceroute.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

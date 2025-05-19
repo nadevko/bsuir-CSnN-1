@@ -57,8 +57,10 @@ let trace (options : TraceOptions) =
 
     let prober =
         match options.Protocol with
-        | ICMP -> new ICMP.Prober (options, probeOptions) :> IProber
-        | _ -> new UDP.Prober (options, probeOptions) :> IProber
+        | Protocol.ICMP -> new ICMP.Prober (options, probeOptions) :> IProber
+        | Protocol.UDP -> new UDP.Prober (options, probeOptions) :> IProber
+        | Protocol.Auto
+        | _ -> new Auto.Prober (options, probeOptions) :> IProber
 
     let results =
         let dict = new Dictionary<int, List<ProbeResult option>> ()
@@ -98,7 +100,6 @@ let trace (options : TraceOptions) =
                         else
                             printf " "
 
-                        printed <- printed.Add ip
                         printf " %dms" result.ms
 
                     if currentQuery = options.Queries then
@@ -150,7 +151,7 @@ let trace (options : TraceOptions) =
             options.MaxTTL
             options.PayloadSize
 
-        printEvent.Publish.Add (fun () -> Task.Run (new Func<Task> (printResults)) |> ignore)
+        printEvent.Publish.Add (fun _ -> Task.Run (fun () -> printResults().GetAwaiter().GetResult ()) |> ignore)
 
         sendProbes options.FirstTTL options.Queries
 
