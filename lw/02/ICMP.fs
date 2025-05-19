@@ -49,7 +49,7 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
     let remoteEP = ref (new IPEndPoint (IPAddress.Any, 0) :> EndPoint)
 
     try
-        let receiveBuffer = icmpSocket.ReceiveFrom (buffer, remoteEP)
+        icmpSocket.ReceiveFrom (buffer, remoteEP) |> ignore
         stopwatch.Stop ()
 
         let receiveAddress =
@@ -57,8 +57,8 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
             | :? IPEndPoint as ep -> ep.Address
             | _ -> IPAddress.None
 
-        let icmpType = if receiveBuffer >= 20 then int buffer.[20] else -1
-        let icmpCode = if receiveBuffer >= 21 then int buffer.[21] else -1
+        let icmpType = int buffer.[20]
+        let icmpCode = int buffer.[21]
 
         Some
             { ip = receiveAddress
@@ -79,41 +79,29 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
 
     interface IProber with
         member _.Probe ttl =
-            let RemoteEP = probeOpts.RemoteEP ttl
+            let remoteEP = probeOpts.RemoteEP ttl
             icmpSocket.Ttl <- int16 ttl
 
             let packet = createIcmpPacket traceOpts.PayloadSize ttl
             let stopwatch = new Stopwatch ()
 
-            try
-                stopwatch.Start ()
-                icmpSocket.SendTo (packet, RemoteEP) |> ignore
-            with ex ->
-                printfn "Error sending ICMP packet: %s" ex.Message
+            stopwatch.Start ()
+            icmpSocket.SendTo (packet, remoteEP) |> ignore
 
-            match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch with
+            match receiveResponse icmpSocket 56 stopwatch with
             | Some response ->
-                let packetId =
-                    if response.icmpType = 0 then
-                        int response.buffer.[24] <<< 8 ||| int response.buffer.[25]
-                    else
-                        int response.buffer.[52] <<< 8 ||| int response.buffer.[53]
-
-                if packetId <> id then
-                    None
-                else
-                    Some
-                        { ttl =
-                            if response.icmpType = 0 then
-                                int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
-                            else
-                                int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
-                          ip = response.ip
-                          ms = response.ms
-                          hostName = tryGetHostName traceOpts response.ip
-                          isSuccess =
-                            response.icmpType = 0 && response.icmpCode = 0
-                            || Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
+                Some
+                    { ttl =
+                        if response.icmpType = 0 then
+                            int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
+                        else
+                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
+                      ip = response.ip
+                      ms = response.ms
+                      hostName = tryGetHostName traceOpts response.ip
+                      isSuccess =
+                        response.icmpType = 0 && response.icmpCode = 0
+                        || Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
             | _ -> None
 
     interface System.IDisposable with
