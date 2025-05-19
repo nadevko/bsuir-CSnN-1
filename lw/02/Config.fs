@@ -8,8 +8,8 @@ type IpVersion =
     | IPv6
 
 type Protocol =
-    | ICMP
-    | UDP
+    | ICMP = 1uy
+    | UDP = 17uy
 
 type ProbeResult =
     { ttl : int

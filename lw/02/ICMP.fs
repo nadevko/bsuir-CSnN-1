@@ -1,6 +1,7 @@
 module CSnN1.Lw02.ICMP
 
 open CSnN1.Lw02.Config
+open CSnN1.Lw02.Checksum
 
 open System.Net
 open System.Net.Sockets
@@ -17,20 +18,6 @@ let tryGetHostName options (ip : IPAddress) =
             Some host.HostName
         with _ ->
             None
-
-let calculateIcmpChecksum (packet : byte array) : uint16 =
-    let mutable sum = 0
-
-    for i in 0..2 .. packet.Length - 1 do
-        let highByte = if i < packet.Length then int packet.[i] else 0
-        let lowByte = if i + 1 < packet.Length then int packet.[i + 1] else 0
-        let word = highByte <<< 8 ||| lowByte
-        sum <- sum + word
-
-    while sum >>> 16 > 0 do
-        sum <- (sum &&& 0xFFFF) + (sum >>> 16)
-
-    uint16 ~~~sum
 
 let createIcmpPacket (payloadSize : int) (sequence : int) =
     // Create the initial packet with header values
@@ -52,8 +39,8 @@ let createIcmpPacket (payloadSize : int) (sequence : int) =
            // Payload (zeros)
            yield! [| for _ in 1..payloadSize -> 0uy |] |]
 
-    // Calculate ICMP checksum
-    let checksum = calculateIcmpChecksum packet
+    // Calculate ICMP checksum using the common checksum function
+    let checksum = calculateChecksum packet
     packet.[2] <- byte (checksum >>> 8)
     packet.[3] <- byte checksum
 

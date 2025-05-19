@@ -58,7 +58,7 @@ let trace (options : TraceOptions) =
     let prober =
         match options.Protocol with
         | ICMP -> new ICMP.Prober (options, probeOptions) :> IProber
-        | UDP -> new UDP.Prober (options, probeOptions) :> IProber
+        | _ -> new UDP.Prober (options, probeOptions) :> IProber
 
     let results =
         let dict = new Dictionary<int, List<ProbeResult option>> ()

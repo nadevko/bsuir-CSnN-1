@@ -1,22 +1,27 @@
 module CSnN1.Lw02.UDP
 
 open CSnN1.Lw02.Config
+open CSnN1.Lw02.ICMP
+open CSnN1.Lw02.Checksum
 
+open System
 open System.Net
 open System.Net.Sockets
+open System.Diagnostics
 
-let createUdpPacket (localEP : IPEndPoint) (remoteEP : IPEndPoint) (payloadSize : int) =
+/// Создает UDP заголовок и данные
+let createUdpPacket (sourcePort : int) (destPort : int) (payloadSize : int) =
     let headerSize = 8
     let totalSize = headerSize + payloadSize
 
     let packet =
         [|
            // Source port (2 bytes)
-           byte (localEP.Port >>> 8)
-           byte localEP.Port
+           byte (sourcePort >>> 8)
+           byte sourcePort
            // Destination port (2 bytes)
-           byte (remoteEP.Port >>> 8)
-           byte remoteEP.Port
+           byte (destPort >>> 8)
+           byte destPort
            // Length (2 bytes) - includes header and data
            byte (totalSize >>> 8)
            byte totalSize
@@ -24,49 +29,54 @@ let createUdpPacket (localEP : IPEndPoint) (remoteEP : IPEndPoint) (payloadSize 
            0uy
            0uy
            // Payload (zeros)
-           yield! [| for _ in 1..payloadSize -> 0uy |] |]
+           yield! [| for _ in 1..payloadSize -> 0uy |]
+        |]
 
-    // Calculate UDP checksum using IPv4 pseudo-header, UDP header, payload
+    packet
+
+let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddress) =
+    // Создаем копию пакета для модификации
+    let packet = Array.copy udpPacket
+
+    // Сначала обнуляем поле контрольной суммы
+    packet.[6] <- 0uy
+    packet.[7] <- 0uy
+
+    let totalSize = packet.Length
+
+    // Создаем псевдо-заголовок для расчета контрольной суммы UDP
     let pseudoHeader =
         [|
            // Source IP (4 bytes)
-           yield! localEP.Address.GetAddressBytes ()
+           yield! sourceIP.GetAddressBytes()
+
            // Destination IP (4 bytes)
-           yield! remoteEP.Address.GetAddressBytes ()
+           yield! destIP.GetAddressBytes()
+
            // Zero (1 byte)
            0uy
+
            // Protocol (1 byte) - 17 for UDP
            17uy
+
            // UDP Length (2 bytes)
            byte (totalSize >>> 8)
-           byte totalSize |]
+           byte totalSize
+        |]
 
-    // Combine pseudo-header and UDP packet for checksum calculation
-    let checksumData = Array.concat [ pseudoHeader ; packet ]
+    // Вычисляем контрольную сумму с помощью общей функции из модуля Checksum
+    let checksum =
+        let sum = calculateChecksum (Array.concat [pseudoHeader; packet])
+        if sum = 0us then 0xFFFFus else sum
 
-    // Calculate checksum over the combined data
-    let mutable checksum = 0us
-
-    for i in 0..2 .. checksumData.Length - 1 do
-        if i + 1 < checksumData.Length then
-            checksum <- checksum + (uint16 checksumData.[i] <<< 8) + uint16 checksumData.[i + 1]
-        else
-            checksum <- checksum + (uint16 checksumData.[i] <<< 8)
-
-    while checksum >>> 16 > 0us do
-        checksum <- (checksum &&& 0xFFFFus) + (checksum >>> 16)
-
-    checksum <- ~~~checksum
-
-    // If checksum is zero, use all ones (0xFFFF)
-    checksum <- if checksum = 0us then 0xFFFFus else checksum
-
+    // Устанавливаем контрольную сумму в пакет
     packet.[6] <- byte (checksum >>> 8)
     packet.[7] <- byte checksum
 
     packet
 
-type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
+type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
+    // Сокет для прослушивания ICMP ответов для перехвата сообщений об ошибках UDP
     let icmpSocket =
         new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
@@ -74,56 +84,72 @@ type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
+    // UDP сокет для отправки запросов
     let udpSocket =
-        new Socket (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+        new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
 
-    do udpSocket.SendTimeout <- traceOpts.SendTimeout
+    do
+        udpSocket.SendTimeout <- traceOpts.SendTimeout
 
     let isDisposed = ref false
 
     interface IProber with
         member _.Probe ttl =
-            let RemoteEP = probeOpts.RemoteEP ttl
+            // Используем функцию RemoteEP для получения конечной точки с портом, увеличенным на ttl
+            let remoteEP = probeOpts.RemoteEP ttl
+
+            // Устанавливаем TTL для UDP-пакета
             udpSocket.Ttl <- int16 ttl
 
-            let packet = createUdpPacket probeOpts.LocalEP RemoteEP traceOpts.PayloadSize
-            let stopwatch = new System.Diagnostics.Stopwatch()
+            // Создаем UDP пакет
+            let packet = createUdpPacket probeOpts.LocalEP.Port remoteEP.Port traceOpts.PayloadSize
+
+            // Устанавливаем контрольную сумму для UDP пакета
+            let packetWithChecksum = setUdpChecksum packet probeOpts.LocalEP.Address remoteEP.Address
+
+            let stopwatch = new Stopwatch()
 
             try
                 stopwatch.Start()
-                udpSocket.SendTo (packet, RemoteEP) |> ignore
+                // Отправляем UDP пакет
+                udpSocket.SendTo(packetWithChecksum, remoteEP) |> ignore
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
 
+            // Ожидаем ICMP ответ (Time Exceeded или Destination Unreachable)
             match ICMP.receiveResponse icmpSocket 576 stopwatch with
             | Some response ->
                 try
-                    let ttl =
+                    // Определяем TTL на основе порта
+                    let calculatedTtl =
                         if response.buffer.Length >= 52 then
                             try
+                                // Извлекаем порт назначения из ICMP-ответа
                                 let responsePort = int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
+                                // Получаем базовый порт из функции RemoteEP(0)
                                 let basePort = (probeOpts.RemoteEP 0).Port
 
                                 if responsePort >= basePort && responsePort <= basePort + 100 then
+                                    // Извлекаем ttl из порта назначения
                                     responsePort - basePort
                                 else
-                                    int udpSocket.Ttl
+                                    ttl  // Используем переданный ttl как fallback
                             with _ ->
-                                int udpSocket.Ttl
+                                ttl
                         else
-                            int udpSocket.Ttl
+                            ttl
 
                     Some
-                        { ttl = ttl
+                        { ttl = calculatedTtl
                           ip = response.ip
                           ms = response.ms
                           hostName = ICMP.tryGetHostName traceOpts response.ip
+                          // Считаем успешным достижение цели, если получили ICMP Destination Unreachable
                           isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
                 with ex ->
                     printfn "Error extracting port from ICMP response: %s" ex.Message
-
                     Some
-                        { ttl = int udpSocket.Ttl
+                        { ttl = ttl
                           ip = response.ip
                           ms = response.ms
                           hostName = ICMP.tryGetHostName traceOpts response.ip
@@ -133,6 +159,6 @@ type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
     interface System.IDisposable with
         member _.Dispose () =
             if not isDisposed.Value then
-                icmpSocket.Dispose ()
-                udpSocket.Dispose ()
+                icmpSocket.Dispose()
+                udpSocket.Dispose()
                 isDisposed.Value <- true
