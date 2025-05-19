@@ -70,11 +70,7 @@
           formatter = treefmt.wrapper;
         };
       topLevel.nixosModules = {
-        default =
-          { config, ... }:
-          {
-            imports = [ lw02.nixosModules.default ];
-          };
+        default.imports = [ lw02.nixosModules.default ];
         lw02 = lw02.nixosModules.default;
       };
     };

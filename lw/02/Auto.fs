@@ -8,13 +8,13 @@ type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
 
     interface IProber with
         member _.Probe ttl =
-            match (icmpProber :> IProber).Probe ttl with
+            match (udpProber :> IProber).Probe ttl with
             | Some result -> Some result
             | None ->
                 System.Threading.Thread.Sleep 20
-                (udpProber :> IProber).Probe ttl
+                (icmpProber :> IProber).Probe ttl
 
     interface System.IDisposable with
         member _.Dispose () =
-            (icmpProber :> System.IDisposable).Dispose ()
             (udpProber :> System.IDisposable).Dispose ()
+            (icmpProber :> System.IDisposable).Dispose ()

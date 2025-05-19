@@ -69,7 +69,7 @@ let main (args : string[]) : int =
     icmpOption.AddAlias "-I"
     rootCommand.AddOption icmpOption
 
-    let udpOption = new Option<bool> ("--udp", "Set the UDP protocol to use (default).")
+    let udpOption = new Option<bool> ("--udp", "Set the UDP protocol to use.")
     udpOption.AddAlias "-U"
     rootCommand.AddOption udpOption
 
@@ -100,7 +100,7 @@ let main (args : string[]) : int =
     rootCommand.AddOption noResolveOption
 
     let portOption =
-        new Option<uint16> ("--port", "Set the destination port to use. Use 0 for random.")
+        new Option<uint16> ("--port", "Set port to use. Use 0 for random.")
 
     portOption.AddAlias "-p"
     portOption.SetDefaultValue 33434us
@@ -122,6 +122,7 @@ let main (args : string[]) : int =
         new Option<float> ("--send", "Maximum time in seconds to wait for sending packets")
 
     sendTimeoutOption.AddAlias "-s"
+    sendTimeoutOption.SetDefaultValue 0.5
     rootCommand.AddOption sendTimeoutOption
 
     let receiveTimeoutOption =
@@ -248,11 +249,13 @@ let main (args : string[]) : int =
     )
 
     rootCommand.AddValidator (fun result ->
-        let ipv4 = result.GetValueForOption ipv4Option
+        // let ipv4 = result.GetValueForOption ipv4Option
         let ipv6 = result.GetValueForOption ipv6Option
 
-        if ipv4 && ipv6 then
-            result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
+        if ipv6 then
+            result.ErrorMessage <- "IPv6 are not implemented"
+        // if ipv4 && ipv6 then
+        //     result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
     )
 
     rootCommand.AddValidator (fun result ->
