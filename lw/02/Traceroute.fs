@@ -72,50 +72,49 @@ let trace (options : TraceOptions) =
 
     let printResults () : Task =
         task {
-            if results.[currentTtl].Count < currentQuery then
-                return ()
-
             lock
                 printLock
                 (fun () ->
-                    if currentQuery = 1 then
-                        printed <- Set.empty<string>
-                        printf "%*d" padding currentTtl
-
-                    match results.[currentTtl].[currentQuery - 1] with
-                    | None -> printf "  *"
-                    | Some result ->
-                        let ip = result.ip.ToString ()
-
-                        if result.hostName.IsSome && not (printed.Contains result.hostName.Value) then
-                            printf "  %s" result.hostName.Value
-                            printed <- printed.Add result.hostName.Value
-
-                            if not (printed.Contains ip) then
-                                printf " (%s)" ip
-                                printed <- printed.Add ip
-                        elif not (printed.Contains ip) then
-                            printf "  %s" ip
-                            printed <- printed.Add ip
-                        else
-                            printf " "
-
-                        printf " %dms" result.ms
-
-                    if currentQuery = options.Queries then
-                        printfn ""
+                    if results.[currentTtl].Count >= currentQuery then
+                        if currentQuery = 1 then
+                            printed <- Set.empty<string>
+                            printf "%*d" padding currentTtl
 
                         match results.[currentTtl].[currentQuery - 1] with
-                        | Some result when result.isSuccess -> cancellationEvent.Set () |> ignore
-                        | _ -> ()
+                        | None -> printf "  *"
+                        | Some result ->
+                            let ip = result.ip.ToString ()
 
-                        currentTtl <- currentTtl + 1
-                        currentQuery <- 1
+                            if result.hostName.IsSome && not (printed.Contains result.hostName.Value) then
+                                printf "  %s" result.hostName.Value
+                                printed <- printed.Add result.hostName.Value
 
-                        if currentTtl > options.MaxTTL then
-                            cancellationEvent.Set () |> ignore
-                    else
-                        currentQuery <- currentQuery + 1
+                                if not (printed.Contains ip) then
+                                    printf " (%s)" ip
+                                    printed <- printed.Add ip
+                            elif not (printed.Contains ip) then
+                                printf "  %s" ip
+                                printed <- printed.Add ip
+                            else
+                                printf " "
+
+                            printf " %dms" result.ms
+
+                        if currentQuery = options.Queries then
+                            printfn ""
+
+                            let lastResult = results.[currentTtl].[currentQuery - 1]
+
+                            if lastResult.IsSome && lastResult.Value.isSuccess then
+                                cancellationEvent.Set () |> ignore
+
+                            currentTtl <- currentTtl + 1
+                            currentQuery <- 1
+
+                            if currentTtl > options.MaxTTL then
+                                cancellationEvent.Set () |> ignore
+                        else
+                            currentQuery <- currentQuery + 1
                 )
         }
 
