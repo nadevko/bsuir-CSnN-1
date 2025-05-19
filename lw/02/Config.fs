@@ -18,8 +18,13 @@ type ProbeResult =
       hostName : string option
       isSuccess : bool }
 
+type IProber =
+    abstract member Probe : int -> ProbeResult option
+    inherit System.IDisposable
+
 type TraceOptions =
     { Hostname : string
+      Protocol : Protocol
       FirstTTL : int
       MaxTTL : int
       Port : int
@@ -36,5 +41,3 @@ type ProbeOptions =
     { LocalEP : IPEndPoint
       RemoteEP : int -> IPEndPoint
       Addresses : IPAddress array }
-
-type ProbeFactory = TraceOptions -> ProbeOptions -> (int -> unit) * (unit -> ProbeResult option) * (unit -> unit)

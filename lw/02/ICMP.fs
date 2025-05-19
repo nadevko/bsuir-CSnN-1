@@ -91,29 +91,28 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
     with _ ->
         None
 
-let probe : ProbeFactory =
-    fun traceOpts probeOpts ->
-        let icmpSocket =
-            new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
+type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
+    let icmpSocket =
+        new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
 
+    do
         icmpSocket.ReceiveTimeout <- traceOpts.ReceiveTimeout
         icmpSocket.Bind probeOpts.LocalEP
 
-        let mutable stopwatch = Stopwatch ()
-
-        let send ttl =
+    interface IProber with
+        member _.Probe ttl =
             let RemoteEP = probeOpts.RemoteEP ttl
-            icmpSocket.SetSocketOption (SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl)
+            icmpSocket.Ttl <- int16 ttl
+
             let packet = createIcmpPacket traceOpts.PayloadSize ttl
-            stopwatch.Start ()
+            let stopwatch = new Stopwatch()
 
             try
-                icmpSocket.Ttl <- int16 ttl
+                stopwatch.Start()
                 icmpSocket.SendTo (packet, RemoteEP) |> ignore
             with ex ->
                 printfn "Error sending ICMP packet: %s" ex.Message
 
-        let receive () =
             match receiveResponse icmpSocket (56 + traceOpts.PayloadSize) stopwatch with
             | Some response ->
                 let packetId =
@@ -140,6 +139,6 @@ let probe : ProbeFactory =
                             Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
             | _ -> None
 
-        let dispose () = icmpSocket.Dispose ()
-
-        send, receive, dispose
+    interface System.IDisposable with
+        member _.Dispose () =
+                icmpSocket.Dispose ()

@@ -132,6 +132,11 @@ let main (args : string[]) : int =
 
             let options =
                 { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
+                  Protocol =
+                    if ctx.ParseResult.GetValueForOption icmpOption then
+                        ICMP
+                    else
+                        UDP
                   Port = int (ctx.ParseResult.GetValueForOption portOption)
                   SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
@@ -148,17 +153,7 @@ let main (args : string[]) : int =
                     else
                         interfaces.[interfaceIP] }
 
-            let probeFactory =
-                if
-                    ctx.ParseResult.GetValueForOption icmpOption
-                    && not (ctx.ParseResult.GetValueForOption udpOption)
-                then
-                    ICMP.probe
-                else
-                    UDP.probe
-
-            use traceroute = new Traceroute (probeFactory, options)
-            traceroute.Start ()
+            trace options
             ctx.ExitCode <- 0
         with ex ->
             printfn "Error: %s" ex.Message

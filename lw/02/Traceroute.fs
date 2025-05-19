@@ -8,58 +8,57 @@ open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
 
-type PrintEventArgs () =
-    inherit EventArgs ()
+let resolveHostname (hostname : string) (ipVersion : IpVersion) =
+    let hostEntry = Dns.GetHostEntry hostname
+    let addresses = hostEntry.AddressList
 
-type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
+    if addresses.Length = 0 then
+        raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
+
+    let ip =
+        match
+            addresses
+            |> Array.tryFind (fun ip -> ip.ToString () = hostname)
+            |> Option.orElse (
+                addresses
+                |> Array.tryFind (fun ip ->
+                    match ipVersion with
+                    | Any -> true
+                    | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
+                    | _ -> true
+                )
+            )
+        with
+        | Some ip -> ip
+        | None ->
+            raise (
+                WebException (sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname)
+            )
+
+    addresses, ip
+
+let trace (options : TraceOptions) =
     let padding = options.MaxTTL.ToString().Length
+    let printLock = new Object ()
+
+    let cancellationEvent = new ManualResetEvent false
+    let printEvent = new Event<unit> ()
+
     let mutable currentTtl = options.FirstTTL
     let mutable currentQuery = 1
     let mutable printed = Set.empty<string>
-    let printLock = new Object ()
-    let cancellationEvent = new ManualResetEvent (false)
 
-    let addresses, remoteIP =
-        let resolveHostname (hostname : string) (ipVersion : IpVersion) =
-            let hostEntry = Dns.GetHostEntry hostname
-            let addresses = hostEntry.AddressList
+    let addresses, remoteIP = resolveHostname options.Hostname options.IpVersion
 
-            if addresses.Length = 0 then
-                raise (WebException (sprintf "Could not resolve hostname: %s" hostname))
+    let probeOptions =
+        { LocalEP = new IPEndPoint (options.interfaceIP, 0)
+          RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
+          Addresses = addresses }
 
-            let ip =
-                match
-                    addresses
-                    |> Array.tryFind (fun ip -> ip.ToString () = hostname)
-                    |> Option.orElse (
-                        addresses
-                        |> Array.tryFind (fun ip ->
-                            match ipVersion with
-                            | Any -> true
-                            | IPv4 when ip.AddressFamily = AddressFamily.InterNetwork -> true
-                            | IPv6 when ip.AddressFamily = AddressFamily.InterNetworkV6 -> true
-                            | _ -> false
-                        )
-                    )
-                with
-                | Some ip -> ip
-                | None ->
-                    raise (
-                        WebException (
-                            sprintf "No matching %s address found for hostname: %s" (ipVersion.ToString ()) hostname
-                        )
-                    )
-
-            addresses, ip
-
-        resolveHostname options.Hostname options.IpVersion
-
-    let send, receive, dispose =
-        probeFactory
-            options
-            { LocalEP = new IPEndPoint (options.interfaceIP, 0)
-              RemoteEP = fun ttl -> new IPEndPoint (remoteIP, options.Port + ttl)
-              Addresses = addresses }
+    let prober =
+        match options.Protocol with
+        | ICMP -> new ICMP.Prober (options, probeOptions) :> IProber
+        | UDP -> new UDP.Prober (options, probeOptions) :> IProber
 
     let results =
         let dict = new Dictionary<int, List<ProbeResult option>> ()
@@ -69,54 +68,7 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
 
         dict
 
-    let printEvent = new Event<unit> ()
-
-    [<CLIEvent>]
-    member _.PrintEvent = printEvent.Publish
-
-    member this.Start () =
-        try
-            printfn
-                "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
-                options.Hostname
-                (remoteIP.ToString ())
-                options.MaxTTL
-                options.PayloadSize
-
-            this.PrintEvent.Add (fun () -> Task.Run (fun () -> this.PrintAsync ()) |> ignore)
-
-            this.SendAll options.FirstTTL options.Queries
-
-            cancellationEvent.WaitOne () |> ignore
-        with ex ->
-            printfn "Error: %s" ex.Message
-
-    member private this.SendAll (ttl : int) (remainingQueries : int) =
-        if ttl <= options.MaxTTL && cancellationEvent.WaitOne 0 |> not then
-            let batchSize = min options.Jobs remainingQueries
-
-            [ for _ in 1..batchSize do
-                  send ttl
-                  let result = receive ()
-
-                  let updateTtl =
-                      match result with
-                      | None -> ttl
-                      | Some result -> result.ttl
-
-                  results.[updateTtl].Add result
-                  printEvent.Trigger () ]
-            |> Async.Parallel
-            |> Async.RunSynchronously
-            |> ignore
-
-            if remainingQueries > batchSize then
-                this.SendAll ttl (remainingQueries - batchSize)
-            else
-                Thread.Sleep options.SendTimeout
-                this.SendAll (ttl + 1) options.Queries
-
-    member private _.PrintAsync () =
+    let printResults () : Task =
         task {
             if results.[currentTtl].Count < currentQuery then
                 return ()
@@ -166,5 +118,45 @@ type Traceroute (probeFactory : ProbeFactory, options : TraceOptions) =
                 )
         }
 
-    interface IDisposable with
-        member _.Dispose () = dispose ()
+    let rec sendProbes ttl remainingQueries =
+        if ttl <= options.MaxTTL && cancellationEvent.WaitOne 0 |> not then
+            let batchSize = min options.Jobs remainingQueries
+
+            [ for _ in 1..batchSize do
+                  let result = prober.Probe ttl
+
+                  let updateTtl =
+                      match result with
+                      | None -> ttl
+                      | Some result -> result.ttl
+
+                  lock printLock (fun () -> results.[updateTtl].Add result)
+                  printEvent.Trigger () ]
+            |> Async.Parallel
+            |> Async.RunSynchronously
+            |> ignore
+
+            if remainingQueries > batchSize then
+                sendProbes ttl (remainingQueries - batchSize)
+            else
+                Thread.Sleep options.SendTimeout
+                sendProbes (ttl + 1) options.Queries
+
+    try
+        printfn
+            "traceroute to %s (%s), %i hops max, %i extra bytes of payload"
+            options.Hostname
+            (remoteIP.ToString ())
+            options.MaxTTL
+            options.PayloadSize
+
+        printEvent.Publish.Add (fun () -> Task.Run (new Func<Task> (printResults)) |> ignore)
+
+        sendProbes options.FirstTTL options.Queries
+
+        cancellationEvent.WaitOne () |> ignore
+    finally
+        try
+            prober.Dispose ()
+        with _ ->
+            ()
