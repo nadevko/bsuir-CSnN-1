@@ -1,10 +1,8 @@
 module CSnN1.Lw02.UDP
 
 open CSnN1.Lw02.Config
-open CSnN1.Lw02.ICMP
 open CSnN1.Lw02.Checksum
 
-open System
 open System.Net
 open System.Net.Sockets
 open System.Diagnostics
@@ -64,8 +62,6 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
 
     do udpSocket.SendTimeout <- traceOpts.SendTimeout
 
-    let isDisposed = ref false
-
     interface IProber with
         member _.Probe ttl =
             let remoteEP = probeOpts.RemoteEP ttl
@@ -86,44 +82,32 @@ type Prober (traceOpts : Config.TraceOptions, probeOpts : ProbeOptions) =
             with ex ->
                 printfn "Error sending UDP packet: %s" ex.Message
 
-            match ICMP.receiveResponse icmpSocket 576 stopwatch with
+            match ICMP.receiveResponse icmpSocket 52 stopwatch with
             | Some response ->
+                let responsePort = int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
+                let basePort = probeOpts.RemoteEP(0).Port
+
+                let isTtlExtractable =
+                    response.buffer.Length = 52
+                    && responsePort >= basePort
+                    && responsePort <= basePort + (traceOpts.MaxTTL - traceOpts.FirstTTL)
+
                 try
-                    let calculatedTtl =
-                        if response.buffer.Length >= 52 then
-                            try
-                                let responsePort = int response.buffer.[50] <<< 8 ||| int response.buffer.[51]
-                                let basePort = (probeOpts.RemoteEP 0).Port
-
-                                if responsePort >= basePort && responsePort <= basePort + 100 then
-                                    responsePort - basePort
-                                else
-                                    ttl
-                            with _ ->
-                                ttl
-                        else
-                            ttl
-
                     Some
-                        { ttl = calculatedTtl
+                        { ttl = if isTtlExtractable then responsePort - basePort else ttl
                           ip = response.ip
                           ms = response.ms
                           hostName = ICMP.tryGetHostName traceOpts response.ip
-                          isSuccess = response.icmpType = 3 && response.icmpCode = 3 }
-                with ex ->
-                    printfn "Error extracting port from ICMP response: %s" ex.Message
-
-                    Some
-                        { ttl = ttl
-                          ip = response.ip
-                          ms = response.ms
-                          hostName = ICMP.tryGetHostName traceOpts response.ip
-                          isSuccess = false }
+                          isSuccess =
+                            response.icmpType = 3
+                            && response.icmpCode = 3
+                            && isTtlExtractable
+                            && Array.exists (fun addr -> addr.Equals response.ip) probeOpts.Addresses }
+                with _ ->
+                    None
             | None -> None
 
     interface System.IDisposable with
         member _.Dispose () =
-            if not isDisposed.Value then
-                icmpSocket.Dispose ()
-                udpSocket.Dispose ()
-                isDisposed.Value <- true
+            icmpSocket.Dispose ()
+            udpSocket.Dispose ()

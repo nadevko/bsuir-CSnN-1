@@ -13,11 +13,9 @@ type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
     interface IProber with
         member _.Probe ttl =
             match (udpProber :> IProber).Probe ttl with
-            | Some result when result.isSuccess -> Some result
-            | Some result when not result.isSuccess -> Some result
-            | Some _
+            | Some result -> Some result
             | None ->
-                System.Threading.Thread.Sleep (20)
+                System.Threading.Thread.Sleep 20
                 (icmpProber :> IProber).Probe ttl
 
     interface System.IDisposable with
