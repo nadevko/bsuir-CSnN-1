@@ -70,8 +70,7 @@ let receiveResponse (icmpSocket : Socket) (bufferSize : int) (stopwatch : Stopwa
         None
 
 type Prober (options : ProbeOptions) =
-    let icmpSocket =
-        new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
+    let icmpSocket = Pool.GetIcmpSocket options.LocalEP.AddressFamily
 
     do
         icmpSocket.ReceiveTimeout <- options.ReceiveTimeout
@@ -94,9 +93,11 @@ type Prober (options : ProbeOptions) =
                 Some
                     { ttl =
                         (if response.icmpType = 0 then
-                            int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
-                        else
-                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]) / options.Queries + 1
+                             int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
+                         else
+                             int response.buffer.[54] <<< 8 ||| int response.buffer.[55])
+                        / options.Queries
+                        + 1
                       ip = response.ip
                       ms = response.ms
                       hostName = tryGetHostName options.ResolveNames response.ip

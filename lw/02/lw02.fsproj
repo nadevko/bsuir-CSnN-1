@@ -4,7 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Config.fs" />
+    <Compile Include="Pool.fs" />
     <Compile Include="Checksum.fs" />
     <Compile Include="ICMP.fs" />
     <Compile Include="UDP.fs" />

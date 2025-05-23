@@ -99,8 +99,7 @@ let main (args : string[]) : int =
     noResolveOption.AddAlias "-n"
     rootCommand.AddOption noResolveOption
 
-    let portOption =
-        new Option<uint16> ("--port", "Set port to use. Use 0 for random.")
+    let portOption = new Option<uint16> ("--port", "Set port to use. Use 0 for random.")
 
     portOption.AddAlias "-p"
     portOption.SetDefaultValue 33434us
@@ -115,7 +114,7 @@ let main (args : string[]) : int =
 
     let jobsOption = new Option<int> ("--jobs", "Set the number of parallel probes")
     jobsOption.AddAlias "-j"
-    jobsOption.SetDefaultValue 3
+    jobsOption.SetDefaultValue 6
     rootCommand.AddOption jobsOption
 
     let sendTimeoutOption =
@@ -254,8 +253,8 @@ let main (args : string[]) : int =
 
         if ipv6 then
             result.ErrorMessage <- "IPv6 are not implemented"
-        // if ipv4 && ipv6 then
-        //     result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
+    // if ipv4 && ipv6 then
+    //     result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
     )
 
     rootCommand.AddValidator (fun result ->

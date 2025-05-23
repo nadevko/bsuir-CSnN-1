@@ -84,7 +84,7 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
         if ttl <= probeOpts.MaxTTL && cancellationEvent.WaitOne 0 |> not then
             let batchSize = min traceOpts.Jobs remainingQueries
 
-            [ for seq in 0..batchSize - 1 do
+            [ for seq in 0 .. batchSize - 1 do
                   let result = prober.Probe ttl ((ttl - 1) * probeOpts.Queries + seq)
 
                   let updateTtl =

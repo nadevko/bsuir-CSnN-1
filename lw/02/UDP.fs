@@ -64,17 +64,13 @@ let setUdpChecksum (udpPacket : byte[]) (sourceIP : IPAddress) (destIP : IPAddre
 
 type Prober (options : ProbeOptions) =
     let addressFamily = options.LocalEP.AddressFamily
-
-    let icmpSocket =
-        match addressFamily with
-        | AddressFamily.InterNetworkV6 -> new Socket (AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.IcmpV6)
-        | _ -> new Socket (AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp)
+    let icmpSocket = Pool.GetIcmpSocket addressFamily
 
     do
         icmpSocket.ReceiveTimeout <- options.ReceiveTimeout
         icmpSocket.Bind options.LocalEP
 
-    let udpSocket = new Socket (addressFamily, SocketType.Dgram, ProtocolType.Udp)
+    let udpSocket = Pool.GetUdpSocket addressFamily
 
     do udpSocket.SendTimeout <- options.SendTimeout
 
