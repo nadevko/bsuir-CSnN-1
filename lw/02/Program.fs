@@ -115,7 +115,7 @@ let main (args : string[]) : int =
 
     let jobsOption = new Option<int> ("--jobs", "Set the number of parallel probes")
     jobsOption.AddAlias "-j"
-    jobsOption.SetDefaultValue 6
+    jobsOption.SetDefaultValue 3
     rootCommand.AddOption jobsOption
 
     let sendTimeoutOption =
@@ -171,8 +171,7 @@ let main (args : string[]) : int =
                         Protocol.UDP
                     else
                         Protocol.Auto
-                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption)
-                  Queries = int (ctx.ParseResult.GetValueForOption queriesOption) }
+                  Jobs = int (ctx.ParseResult.GetValueForOption queriesOption) }
 
             let addresses, remoteIP = resolveHostname traceOpts.Hostname family
 
@@ -195,6 +194,7 @@ let main (args : string[]) : int =
                   SendTimeout = int (ctx.ParseResult.GetValueForOption sendTimeoutOption * 1000.0)
                   ReceiveTimeout = int (ctx.ParseResult.GetValueForOption receiveTimeoutOption * 1000.0)
                   PayloadSize = if packetLen.HasValue then int packetLen.Value - 28 else 0
+                  Queries = int (ctx.ParseResult.GetValueForOption queriesOption)
                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption) }
 
             trace traceOpts probeOpts

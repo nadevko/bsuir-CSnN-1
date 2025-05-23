@@ -62,7 +62,7 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
 
                             printf " %dms" result.ms
 
-                        if currentQuery = traceOpts.Queries then
+                        if currentQuery = probeOpts.Queries then
                             printfn ""
 
                             let lastResult = results.[currentTtl].[currentQuery - 1]
@@ -84,8 +84,8 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
         if ttl <= probeOpts.MaxTTL && cancellationEvent.WaitOne 0 |> not then
             let batchSize = min traceOpts.Jobs remainingQueries
 
-            [ for _ in 1..batchSize do
-                  let result = prober.Probe ttl
+            [ for seq in 0..batchSize - 1 do
+                  let result = prober.Probe ttl ((ttl - 1) * probeOpts.Queries + seq)
 
                   let updateTtl =
                       match result with
@@ -102,7 +102,7 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
                 sendProbes ttl (remainingQueries - batchSize)
             else
                 Thread.Sleep probeOpts.SendTimeout
-                sendProbes (ttl + 1) traceOpts.Queries
+                sendProbes (ttl + 1) probeOpts.Queries
 
     try
         printfn
@@ -114,7 +114,7 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
 
         printEvent.Publish.Add (fun _ -> Task.Run (fun () -> printResults().GetAwaiter().GetResult ()) |> ignore)
 
-        sendProbes probeOpts.FirstTTL traceOpts.Queries
+        sendProbes probeOpts.FirstTTL probeOpts.Queries
 
         cancellationEvent.WaitOne () |> ignore
     finally

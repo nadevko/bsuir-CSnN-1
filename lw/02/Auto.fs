@@ -7,12 +7,12 @@ type Prober (traceOpts : TraceOptions, probeOpts : ProbeOptions) =
     let icmpProber = new ICMP.Prober (probeOpts)
 
     interface IProber with
-        member _.Probe ttl =
-            match (udpProber :> IProber).Probe ttl with
+        member _.Probe ttl sequence =
+            match (udpProber :> IProber).Probe ttl sequence with
             | Some result -> Some result
             | None ->
                 System.Threading.Thread.Sleep 20
-                (icmpProber :> IProber).Probe ttl
+                (icmpProber :> IProber).Probe ttl sequence
 
     interface System.IDisposable with
         member _.Dispose () =

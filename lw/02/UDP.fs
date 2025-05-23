@@ -79,7 +79,7 @@ type Prober (options : ProbeOptions) =
     do udpSocket.SendTimeout <- options.SendTimeout
 
     interface IProber with
-        member _.Probe ttl =
+        member _.Probe ttl _ =
             let remoteEP = options.RemoteEP (options.LocalEP.Port + ttl)
 
             udpSocket.Ttl <- int16 ttl

@@ -15,13 +15,12 @@ type ProbeResult =
       isSuccess : bool }
 
 type IProber =
-    abstract member Probe : int -> ProbeResult option
+    abstract member Probe : int -> int -> ProbeResult option
     inherit System.IDisposable
 
 type TraceOptions =
     { Hostname : string
       Protocol : Protocol
-      Queries : int
       Jobs : int }
 
 type ProbeOptions =
@@ -33,4 +32,5 @@ type ProbeOptions =
       MaxTTL : int
       PayloadSize : int
       ResolveNames : bool
+      Queries : int
       Addresses : IPAddress array }

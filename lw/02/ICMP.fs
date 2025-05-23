@@ -80,10 +80,10 @@ type Prober (options : ProbeOptions) =
     let remoteEP = options.RemoteEP 0
 
     interface IProber with
-        member _.Probe ttl =
+        member _.Probe ttl sequence =
             icmpSocket.Ttl <- int16 ttl
 
-            let packet = createIcmpPacket options.PayloadSize ttl
+            let packet = createIcmpPacket options.PayloadSize sequence
             let stopwatch = new Stopwatch ()
 
             stopwatch.Start ()
@@ -93,10 +93,10 @@ type Prober (options : ProbeOptions) =
             | Some response ->
                 Some
                     { ttl =
-                        if response.icmpType = 0 then
+                        (if response.icmpType = 0 then
                             int response.buffer.[26] <<< 8 ||| int response.buffer.[27]
                         else
-                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]
+                            int response.buffer.[54] <<< 8 ||| int response.buffer.[55]) / options.Queries + 1
                       ip = response.ip
                       ms = response.ms
                       hostName = tryGetHostName options.ResolveNames response.ip
