@@ -38,11 +38,11 @@ type ProbeOptions =
 type Pool private () =
     static let mutable icmpSocket : Sockets.Socket option = None
     static let mutable udpSocket : Sockets.Socket option = None
-    static let lockObj = obj ()
+    static let locker = obj ()
 
-    static member GetIcmpSocket (addressFamily) =
+    static member GetIcmpSocket addressFamily =
         lock
-            lockObj
+            locker
             (fun () ->
                 match icmpSocket with
                 | Some socket -> socket
@@ -54,9 +54,9 @@ type Pool private () =
                     socket
             )
 
-    static member GetUdpSocket (addressFamily) =
+    static member GetUdpSocket addressFamily =
         lock
-            lockObj
+            locker
             (fun () ->
                 match udpSocket with
                 | Some socket -> socket
@@ -68,9 +68,9 @@ type Pool private () =
                     socket
             )
 
-    static member CloseAll () =
+    static member Dispose () =
         lock
-            lockObj
+            locker
             (fun () ->
                 icmpSocket
                 |> Option.iter (fun s ->

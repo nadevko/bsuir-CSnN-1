@@ -80,12 +80,13 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
                 )
         }
 
-    let rec sendProbes ttl remainingQueries =
+    let rec sendProbes sendedSize ttl remainingQueries =
         if ttl <= probeOpts.MaxTTL && cancellationEvent.WaitOne 0 |> not then
             let batchSize = min traceOpts.Jobs remainingQueries
+            let sendNext = sendProbes (sendedSize + batchSize)
 
             [ for seq in 0 .. batchSize - 1 do
-                  let result = prober.Probe ttl ((ttl - 1) * probeOpts.Queries + seq)
+                  let result = prober.Probe ttl (sendedSize + seq)
 
                   let updateTtl =
                       match result with
@@ -99,10 +100,10 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
             |> ignore
 
             if remainingQueries > batchSize then
-                sendProbes ttl (remainingQueries - batchSize)
+                sendNext ttl (remainingQueries - batchSize)
             else
                 Thread.Sleep probeOpts.SendTimeout
-                sendProbes (ttl + 1) probeOpts.Queries
+                sendNext (ttl + 1) probeOpts.Queries
 
     try
         printfn
@@ -114,7 +115,7 @@ let trace (traceOpts : TraceOptions) (probeOpts : ProbeOptions) =
 
         printEvent.Publish.Add (fun _ -> Task.Run (fun () -> printResults().GetAwaiter().GetResult ()) |> ignore)
 
-        sendProbes probeOpts.FirstTTL probeOpts.Queries
+        sendProbes 0 probeOpts.FirstTTL probeOpts.Queries
 
         cancellationEvent.WaitOne () |> ignore
     finally

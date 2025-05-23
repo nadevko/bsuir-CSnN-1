@@ -73,14 +73,6 @@ let main (args : string[]) : int =
     udpOption.AddAlias "-U"
     rootCommand.AddOption udpOption
 
-    let ipv4Option = new Option<bool> ("--ipv4", "Use IPv4")
-    ipv4Option.AddAlias "-4"
-    rootCommand.AddOption ipv4Option
-
-    let ipv6Option = new Option<bool> ("--ipv6", "Use IPv6")
-    ipv6Option.AddAlias "-6"
-    rootCommand.AddOption ipv6Option
-
     let firstTtlOption = new Option<uint16> ("--first", "Start from the first_ttl hop")
     firstTtlOption.AddAlias "-f"
     firstTtlOption.SetDefaultValue 1us
@@ -153,13 +145,7 @@ let main (args : string[]) : int =
         try
             let interfaceIP = ctx.ParseResult.GetValueForOption interfaceOption
 
-            let family =
-                if ctx.ParseResult.GetValueForOption ipv6Option then
-                    Some AddressFamily.InterNetworkV6
-                elif ctx.ParseResult.GetValueForOption ipv4Option then
-                    Some AddressFamily.InterNetwork
-                else
-                    None
+            let family = Some AddressFamily.InterNetwork
 
             let traceOpts =
                 { Hostname = ctx.ParseResult.GetValueForArgument hostArgument
@@ -178,9 +164,7 @@ let main (args : string[]) : int =
 
             let interfaceIP =
                 if String.IsNullOrEmpty interfaceIP then
-                    match remoteIP.AddressFamily with
-                    | AddressFamily.InterNetworkV6 -> IPAddress.IPv6Any
-                    | _ -> IPAddress.Any
+                    IPAddress.Any
                 else
                     getNetworkInterfaces(family).[interfaceIP]
 
@@ -197,6 +181,7 @@ let main (args : string[]) : int =
                   ResolveNames = not (ctx.ParseResult.GetValueForOption noResolveOption) }
 
             trace traceOpts probeOpts
+            Pool.Dispose ()
 
             ctx.ExitCode <- 0
         with ex ->
@@ -245,16 +230,6 @@ let main (args : string[]) : int =
             result.ErrorMessage <- "Send timeout must be non-negative."
         elif receiveWait < 0.0 then
             result.ErrorMessage <- "Receive timeout must be non-negative."
-    )
-
-    rootCommand.AddValidator (fun result ->
-        // let ipv4 = result.GetValueForOption ipv4Option
-        let ipv6 = result.GetValueForOption ipv6Option
-
-        if ipv6 then
-            result.ErrorMessage <- "IPv6 are not implemented"
-    // if ipv4 && ipv6 then
-    //     result.ErrorMessage <- "Cannot use both IPv4 and IPv6 options at the same time."
     )
 
     rootCommand.AddValidator (fun result ->
