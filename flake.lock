@@ -1,0 +1,122 @@
+{
+  "nodes": {
+    "bsuir-tex": {
+      "inputs": {
+        "mkflake": "mkflake",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1746387149,
+        "narHash": "sha256-1p+n9NflKWS/k9Hhbp348jfL+RiRrm2xYtoskL1B4Dg=",
+        "owner": "nadevko",
+        "repo": "bsuir-TeX-1",
+        "rev": "e12291fe739bd8b7e03e4f97822742a6e4232a23",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nadevko",
+        "ref": "v0.1",
+        "repo": "bsuir-TeX-1",
+        "type": "github"
+      }
+    },
+    "lw02": {
+      "inputs": {
+        "mkflake": [
+          "mkflake"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "./lw/02",
+        "type": "path"
+      },
+      "original": {
+        "path": "./lw/02",
+        "type": "path"
+      },
+      "parent": []
+    },
+    "mkflake": {
+      "locked": {
+        "lastModified": 1712284878,
+        "narHash": "sha256-66dqRuL4kQw9r/xthE7RbTdaszwUZLdjwFwFloeu6NI=",
+        "owner": "jonascarpay",
+        "repo": "mkflake",
+        "rev": "eb1172a9cd34e0a42848e787fb11a673f658c9e2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jonascarpay",
+        "repo": "mkflake",
+        "type": "github"
+      }
+    },
+    "mkflake_2": {
+      "locked": {
+        "lastModified": 1712284878,
+        "narHash": "sha256-66dqRuL4kQw9r/xthE7RbTdaszwUZLdjwFwFloeu6NI=",
+        "owner": "jonascarpay",
+        "repo": "mkflake",
+        "rev": "eb1172a9cd34e0a42848e787fb11a673f658c9e2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jonascarpay",
+        "repo": "mkflake",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1747917251,
+        "narHash": "sha256-nl/bPb6DXD+sZ7oXorp1B1CtV6Kn79MKvwQaUndszEg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e3e1e416f027e2ae3b1593f76a79a86d003094b6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "release-24.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "bsuir-tex": "bsuir-tex",
+        "lw02": "lw02",
+        "mkflake": "mkflake_2",
+        "nixpkgs": "nixpkgs",
+        "treefmt-nix": "treefmt-nix"
+      }
+    },
+    "treefmt-nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1747912973,
+        "narHash": "sha256-XgxghfND8TDypxsMTPU2GQdtBEsHTEc3qWE6RVEk8O0=",
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "rev": "020cb423808365fa3f10ff4cb8c0a25df35065a3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
